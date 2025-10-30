@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Logs
+*.log
+bg_subs_*.log
+
+# OS
+.DS_Store
+
+# Node (proxy subdir)
+subsland-playwright-proxy/node_modules/
+
+# Editors
+.idea/
+.vscode/
+

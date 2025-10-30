@@ -1,0 +1,26 @@
+[project]
+name = "bg-stremio-addon"
+version = "0.1.0"
+description = "Stremio add-on that aggregates Bulgarian subtitles from multiple sources"
+authors = [{ name = "Kaloyan Ivanov" }]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.5",
+    "requests==2.32.3",
+    "beautifulsoup4==4.12.3",
+    "rarfile==4.2",
+    "py7zr==0.21.0",
+    "charset-normalizer==3.4.4",
+    "httpx==0.27.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
