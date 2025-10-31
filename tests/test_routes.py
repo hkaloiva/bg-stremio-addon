@@ -107,3 +107,52 @@ def test_safe_variants_env_passed(monkeypatch, client):
 
     os.environ.pop("BG_SUBS_SAFE_VARIANTS", None)
 
+
+def test_plain_route_omni_minimal(monkeypatch, client):
+    os.environ["BG_SUBS_ARRAY_ON_PLAIN"] = "1"
+    os.environ["BG_SUBS_OMNI_MINIMAL"] = "1"
+    os.environ["BG_SUBS_OMNI_TOTAL_LIMIT"] = "1"
+
+    def stub(media_type, imdb_id, per_source=1):
+        return _fake_results(2)
+
+    monkeypatch.setattr(app_module, "search_subtitles", stub, raising=False)
+
+    resp = client.get("/subtitles/movie/tt0000006")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+    # Minimal fields only
+    keys = set(data[0].keys())
+    assert keys == {"id", "url", "lang", "title"}
+
+    os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
+    os.environ.pop("BG_SUBS_OMNI_MINIMAL", None)
+    os.environ.pop("BG_SUBS_OMNI_TOTAL_LIMIT", None)
+
+
+def test_json_safe_variants_and_default_limit(monkeypatch, client):
+    # Ensure JSON route uses BG_SUBS_JSON_SAFE_VARIANTS and BG_SUBS_DEFAULT_LIMIT
+    os.environ["BG_SUBS_JSON_SAFE_VARIANTS"] = "2"
+    os.environ["BG_SUBS_DEFAULT_LIMIT"] = "1"
+
+    calls = {"per_source": None}
+
+    def stub(media_type, imdb_id, per_source=1):
+        calls["per_source"] = per_source
+        return _fake_results(2)
+
+    monkeypatch.setattr(app_module, "search_subtitles", stub, raising=False)
+
+    resp = client.get("/subtitles/movie/tt0000005.json")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, dict) and isinstance(data.get("subtitles"), list)
+    # default limit=1 applied
+    assert len(data["subtitles"]) == 1
+    # per_source propagated from BG_SUBS_JSON_SAFE_VARIANTS
+    assert calls["per_source"] == 2
+
+    os.environ.pop("BG_SUBS_JSON_SAFE_VARIANTS", None)
+    os.environ.pop("BG_SUBS_DEFAULT_LIMIT", None)

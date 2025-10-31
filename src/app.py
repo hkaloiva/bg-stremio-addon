@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import unicodedata
 import logging
 import os
 import re
@@ -24,6 +25,7 @@ from bg_subtitles.service import (
 )
 from bg_subtitles.sources.common import REQUEST_ID
 from test_subsland import router as test_router
+from bg_subtitles.cache import TTLCache
 
 # ---------------------------------------------------------------------
 # Logging setup
@@ -37,11 +39,81 @@ charset_logger.setLevel(logging.WARNING)
 charset_logger.propagate = False
 logging.getLogger("charset_normalizer.md__mypyc").setLevel(logging.WARNING)
 
+# Debug logging toggle for richer router/download diagnostics
+def _debug_enabled() -> bool:
+    try:
+        return os.getenv("BG_SUBS_DEBUG_LOGS", "").lower() in {"1", "true", "yes"}
+    except Exception:
+        return False
+
+
+def _clean_label(text: object) -> str:
+    """Normalize and sanitize display labels to avoid client parser crashes.
+
+    - Normalize to NFKC
+    - Strip Kodi-style markup ([COLOR], [B], [I]) and HTML tags
+    - Keep alnum, whitespace, common punctuation, and Cyrillic letters
+    - Collapse whitespace and trim to 32 chars
+    """
+    try:
+        s = str(text) if text is not None else ""
+    except Exception:
+        s = ""
+    s = unicodedata.normalize("NFKC", s)
+    # Remove Kodi-style tags and HTML tags
+    s = re.sub(r"\[/?(COLOR|B|I)[^\]]*\]", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"<[^>]+>", "", s)
+    # Replace disallowed characters with space (exclude square brackets)
+    s = re.sub(r"[^\w\sА-Яа-яёЁ\-\.,:()!?'\"]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip(" -:•|[]")
+    if len(s) > 32:
+        s = s[:32].rstrip(" .-_")
+    return s
+
+
+def _debug_labels_enabled() -> bool:
+    try:
+        return os.getenv("BG_SUBS_DEBUG_LABELS", "").lower() in {"1", "true", "yes"}
+    except Exception:
+        return False
+
+
+def _sanitize_payload(items: List[dict]) -> None:
+    for it in items:
+        for key in ("name", "title", "label"):
+            if key in it:
+                orig = it.get(key)
+                cleaned = _clean_label(orig)
+                if _debug_labels_enabled() and orig != cleaned:
+                    try:
+                        print(json.dumps({
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "level": "INFO",
+                            "logger": "labels",
+                            "msg": "sanitized",
+                            "field": key,
+                            "orig": str(orig)[:80],
+                            "clean": cleaned,
+                        }))
+                    except Exception:
+                        pass
+                it[key] = cleaned
+
 # ---------------------------------------------------------------------
 # App + middleware
 # ---------------------------------------------------------------------
 app = FastAPI(title="Bulgarian Subtitles for Stremio")
-
+# ---------------------------------------------------------------------
+# HEAD handling: rely on Starlette's default (GET-compatible) behavior, but
+# ensure no body is returned for HEAD while preserving headers.
+# ---------------------------------------------------------------------
+@app.middleware("http")
+async def _head_passthrough(request: Request, call_next):
+    response = await call_next(request)
+    if request.method == "HEAD":
+        response.body = b""
+    return response
+# ---------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,6 +121,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Ephemeral cache to coordinate iOS empty-first responses per title
+IOS_EMPTY_PROBE = TTLCache(default_ttl=300)
 
 
 @app.middleware("http")
@@ -62,7 +137,7 @@ async def request_id_middleware(request: Request, call_next):
         REQUEST_ID.reset(token)
     response.headers["X-Request-ID"] = rid
     return response
-
+    # (Removed duplicate HEAD middlewares)
 
 # ---------------------------------------------------------------------
 # Manifest
@@ -136,7 +211,7 @@ async def metrics() -> Response:
 # Subtitle search
 # ---------------------------------------------------------------------
 def _build_subtitle_url(request: Request, token: str, addon_path: Optional[str]) -> str:
-    base = str(request.base_url)
+    base = str(request.base_url).replace("http://", "https://")
     if addon_path:
         return f"{base}{addon_path}/subtitle/{token}.srt"
     return f"{base}subtitle/{token}.srt"
@@ -166,8 +241,38 @@ def _subtitles_response(
     except Exception:
         pass
 
-    per_source = variants if variants and variants > 0 else default_variants
+    # Allow capping per-source variants specifically on .json routes via env
+    json_safe_variants: Optional[int] = None
+    try:
+        v = int(os.getenv("BG_SUBS_JSON_SAFE_VARIANTS", "0"))
+        if v > 0:
+            json_safe_variants = v
+    except Exception:
+        pass
+
+    per_source = variants if variants and variants > 0 else (json_safe_variants or default_variants)
     results = search_subtitles(media_type, item_id, per_source=per_source)
+    if _debug_enabled():
+        try:
+            print(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "level": "INFO",
+                "logger": "router.debug",
+                "msg": "search results",
+                "per_source": per_source,
+                "count": len(results or []),
+            }))
+        except Exception:
+            pass
+
+    # Default limit via env if not provided
+    if limit is None:
+        try:
+            env_limit = int(os.getenv("BG_SUBS_DEFAULT_LIMIT", "0"))
+            if env_limit > 0:
+                limit = env_limit
+        except Exception:
+            pass
     if limit:
         results = results[:limit]
 
@@ -234,6 +339,10 @@ def _subtitles_response(
             sub["lang"] = "bul"       # ISO-639-2
             sub["langName"] = "Bulgarian"
             sub["label"] = sub.get("title") or sub.get("name") or "Bulgarian Subtitles"
+    # Sanitize labels/names to avoid client parser issues
+    _sanitize_payload(payload)
+
+    # Unified response for all clients: no Omni-specific minimalization
 
     # Emit a compact JSON log for observability (parity with dynamic route)
     try:
@@ -247,6 +356,24 @@ def _subtitles_response(
         }))
     except Exception:
         pass
+    if _debug_enabled() and payload:
+        try:
+            first = payload[0]
+            print(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "level": "INFO",
+                "logger": "router.debug",
+                "msg": "first item",
+                "keys": sorted(list(first.keys())),
+                "name_len": len((first.get("name") or "")),
+                "title_len": len((first.get("title") or "")),
+                "url_has_query": ("?" in (first.get("url") or "")),
+                "format": first.get("format"),
+            }))
+        except Exception:
+            pass
+
+    # Unified response for all clients: no iOS-specific minimal wrapper
 
     resp = JSONResponse({"subtitles": payload})
     if REQ_LATENCY:
@@ -267,6 +394,13 @@ async def subtitles(media_type: str, item_id: str, request: Request, limit: Opti
 async def subtitles_prefixed(addon_path: str, media_type: str, item_id: str, request: Request, limit: Optional[int] = Query(None)):
     item_id = unquote(item_id)
     return _subtitles_response(media_type, item_id, request, addon_path=addon_path, limit=limit)
+
+# Compatibility: some clients inject an extra config segment between the prefix and route
+@app.get("/{addon_path}/{config}/subtitles/{media_type}/{item_id}.json")
+async def subtitles_prefixed_config(addon_path: str, config: str, media_type: str, item_id: str, request: Request, limit: Optional[int] = Query(None)):
+    item_id = unquote(item_id)
+    full_prefix = f"{addon_path}/{config}"
+    return _subtitles_response(media_type, item_id, request, addon_path=full_prefix, limit=limit)
 
 
 # ---------------------------------------------------------------------
@@ -393,7 +527,40 @@ async def subtitles_route(
             s["label"] = s.get("title") or s.get("name") or "Bulgarian Subtitles"
             s["lang"] = "bul"       # ISO-639-2 code; widely accepted
             s["langName"] = "Bulgarian"
+    _sanitize_payload(payload)
 
+    # Unified response for all clients: no Omni-specific minimalization
+
+    # Optional: produce a very minimal array for Omni on the true plain path
+    # Keeps Vidi/.json behavior unchanged
+    # Only apply minimalization when plain-array mode is enabled; otherwise keep full fields
+    if (
+        not had_json_suffix
+        and os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
+        and os.getenv("BG_SUBS_OMNI_MINIMAL", "").lower() in {"1", "true", "yes"}
+    ):
+        try:
+            total_cap = int(os.getenv("BG_SUBS_OMNI_TOTAL_LIMIT", "4"))
+            if total_cap > 0:
+                payload = payload[:total_cap]
+        except Exception:
+            pass
+        simplified: List[Dict] = []
+        for s in payload:
+            title = s.get("title") or s.get("name") or "Bulgarian Subtitles"
+            simplified.append({
+                "id": s.get("id"),
+                "url": s.get("url"),
+                "lang": "bg",  # 2-letter to satisfy stricter clients
+                "title": title,
+            })
+        payload = simplified
+
+    # Debug pulse with UA + shape for client diagnostics
+    try:
+        ua = (request.headers.get("user-agent") or "").strip()
+    except Exception:
+        ua = ""
     print(json.dumps({
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "level": "INFO",
@@ -401,8 +568,31 @@ async def subtitles_route(
         "msg": "Response built",
         "count": len(payload),
         "vidi_mode": vidi_mode,
-        "duration_ms": round((time.time() - start) * 1000)
+        "duration_ms": round((time.time() - start) * 1000),
+        "ua": ua[:120],
+        "shape": "array" if os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1","true","yes"} else "object",
     }))
+    if _debug_enabled() and payload:
+        try:
+            first = payload[0]
+            print(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "level": "INFO",
+                "logger": "router.debug",
+                "msg": "first item",
+                "keys": sorted(list(first.keys())),
+                "name_len": len((first.get("name") or "")),
+                "title_len": len((first.get("title") or "")),
+                "url_has_query": ("?" in (first.get("url") or "")),
+                "format": first.get("format"),
+            }))
+        except Exception:
+            pass
+
+    # Respect paths that contain '.json' anywhere: always return object wrapper
+    if had_json_suffix:
+        return JSONResponse({"subtitles": payload})
+    # Unified response for all clients: no iOS-specific minimal wrapper
 
     # Response shape toggle (for clients that expect a plain array on non-.json routes)
     array_on_plain = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
@@ -529,7 +719,36 @@ async def subtitles_route_prefixed(
             s["label"] = s.get("title") or s.get("name") or "Bulgarian Subtitles"
             s["lang"] = "bul"
             s["langName"] = "Bulgarian"
+    _sanitize_payload(payload)
 
+    # Unified response for all clients: no Omni-specific minimalization
+
+    if (
+        not had_json_suffix
+        and os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
+        and os.getenv("BG_SUBS_OMNI_MINIMAL", "").lower() in {"1", "true", "yes"}
+    ):
+        try:
+            total_cap = int(os.getenv("BG_SUBS_OMNI_TOTAL_LIMIT", "4"))
+            if total_cap > 0:
+                payload = payload[:total_cap]
+        except Exception:
+            pass
+        simplified: List[Dict] = []
+        for s in payload:
+            title = s.get("title") or s.get("name") or "Bulgarian Subtitles"
+            simplified.append({
+                "id": s.get("id"),
+                "url": s.get("url"),
+                "lang": "bg",
+                "title": title,
+            })
+        payload = simplified
+
+    try:
+        ua = (request.headers.get("user-agent") or "").strip()
+    except Exception:
+        ua = ""
     print(json.dumps({
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "level": "INFO",
@@ -539,12 +758,52 @@ async def subtitles_route_prefixed(
         "vidi_mode": vidi_mode,
         "duration_ms": round((time.time() - start) * 1000),
         "prefix": addon_path,
+        "ua": ua[:120],
+        "shape": "array" if os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1","true","yes"} else "object",
     }))
+    if _debug_enabled() and payload:
+        try:
+            first = payload[0]
+            print(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "level": "INFO",
+                "logger": "router.debug",
+                "msg": "first item",
+                "keys": sorted(list(first.keys())),
+                "name_len": len((first.get("name") or "")),
+                "title_len": len((first.get("title") or "")),
+                "url_has_query": ("?" in (first.get("url") or "")),
+                "format": first.get("format"),
+            }))
+        except Exception:
+            pass
 
+    # Unified response for all clients: no iOS-specific minimal wrapper
+
+    if had_json_suffix:
+        return JSONResponse({"subtitles": payload})
     array_on_plain = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
     if array_on_plain:
         return JSONResponse(payload)
     return JSONResponse({"subtitles": payload})
+
+# Compatibility: accept an extra config segment before "subtitles" and reuse the same logic
+@app.get("/{addon_path}/{config}/subtitles/{media_type}/{imdb_id:path}")
+async def subtitles_route_prefixed_config(
+    addon_path: str,
+    config: str,
+    media_type: str,
+    imdb_id: str,
+    request: Request,
+    limit: Optional[int] = Query(None),
+    variants: Optional[int] = Query(None),
+):
+    # Delegate by composing the full prefix
+    full_prefix = f"{addon_path}/{config}"
+    # Reuse existing handler by calling the json route builder for parity
+    # We normalize imdb_id similarly as in the other handler
+    imdb_id = unquote(imdb_id)
+    return _subtitles_response(media_type, imdb_id.split(".json")[0], request, addon_path=full_prefix, limit=limit, variants=variants)
 
 # ---------------------------------------------------------------------
 # Subtitle download
@@ -554,8 +813,37 @@ def _subtitle_download(request: Request, token: str) -> Response:
     filename = resolved.get("filename") or "subtitle.srt"
     encoding = resolved.get("encoding", "utf-8")
     fmt = resolved.get("format") or DEFAULT_FORMAT
-    media_type = "text/plain" if fmt in {"srt", "sub", "txt", "ass", "ssa"} else "application/octet-stream"
+    # Determine client specifics (iOS often expects special handling)
+    try:
+        ua = (request.headers.get("user-agent") or "").lower()
+    except Exception:
+        ua = ""
+    is_ios = any(tok in ua for tok in ("iphone", "ipad", "ipod"))
+
     content: bytes = resolved["content"]
+    # Optional line-ending normalization for SRT
+    try:
+        crlf_flag = os.getenv("BG_SUBS_SRT_CRLF", "").lower() in {"1", "true", "yes"}
+    except Exception:
+        crlf_flag = False
+    if fmt == "srt" and (crlf_flag or is_ios):
+        try:
+            text = content.decode("utf-8", errors="replace")
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+            text = text.replace("\n", "\r\n")
+            content = text.encode("utf-8")
+            encoding = "utf-8"
+        except Exception:
+            pass
+
+    # MIME type selection
+    if fmt == "srt":
+        srt_mime = os.getenv("BG_SUBS_SRT_MIME") or ("application/x-subrip" if is_ios else "text/plain")
+        media_type = srt_mime
+    elif fmt in {"sub", "txt", "ass", "ssa"}:
+        media_type = "text/plain"
+    else:
+        media_type = "application/octet-stream"
 
     etag = hashlib.md5(content).hexdigest()
     current_etag = f'W/"{etag}"'
@@ -565,11 +853,68 @@ def _subtitle_download(request: Request, token: str) -> Response:
         "Cache-Control": "public, max-age=86400, immutable",
         "ETag": current_etag,
         "Access-Control-Allow-Origin": "*",
+        "Accept-Ranges": "bytes",
     }
     if inm and inm.strip() == current_etag:
         return Response(status_code=304, headers=headers)
 
-    return Response(content=content, media_type=f"{media_type}; charset={encoding}", headers=headers)
+    # Basic support for HTTP Range requests (iOS/players may depend on it)
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if range_header and range_header.lower().startswith("bytes="):
+        try:
+            spec = range_header.split("=", 1)[1]
+            start_s, end_s = (spec.split("-", 1) + [""])[:2]
+            total = len(content)
+            if start_s:
+                start = int(start_s)
+            else:
+                start = 0
+            if end_s:
+                end = int(end_s)
+            else:
+                end = total - 1
+            if start >= total:
+                h = dict(headers)
+                h["Content-Range"] = f"bytes */{total}"
+                return Response(status_code=416, headers=h)
+            end = min(end, total - 1)
+            chunk = content[start : end + 1]
+            h = dict(headers)
+            h["Content-Range"] = f"bytes {start}-{end}/{total}"
+            h["Content-Length"] = str(len(chunk))
+            resp = Response(content=chunk, media_type=f"{media_type}; charset={encoding}", headers=h, status_code=206)
+            if _debug_enabled():
+                try:
+                    print(json.dumps({
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "level": "INFO",
+                        "logger": "download",
+                        "msg": "partial",
+                        "range": f"{start}-{end}",
+                        "total": total,
+                        "ua": (request.headers.get("user-agent") or "")[:160],
+                    }))
+                except Exception:
+                    pass
+            return resp
+        except Exception:
+            # Fall back to full response on parse errors
+            pass
+
+    resp = Response(content=content, media_type=f"{media_type}; charset={encoding}", headers=headers)
+    if _debug_enabled():
+        try:
+            print(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "level": "INFO",
+                "logger": "download",
+                "msg": "full",
+                "length": len(content),
+                "ua": (request.headers.get("user-agent") or "")[:160],
+            }))
+        except Exception:
+            pass
+    return resp
 
 
 @app.get("/subtitle/{token}.srt")
@@ -580,3 +925,27 @@ async def serve_subtitle(request: Request, token: str) -> Response:
 @app.get("/{addon_path}/subtitle/{token}.srt")
 async def serve_subtitle_prefixed(request: Request, addon_path: str, token: str) -> Response:
     return _subtitle_download(request, token)
+
+# Explicit HEAD handlers for subtitle downloads (some clients probe with HEAD)
+@app.head("/subtitle/{token}.srt")
+async def head_subtitle(request: Request, token: str) -> Response:
+    resp = _subtitle_download(request, token)
+    resp.body = b""
+    return resp
+
+@app.head("/{addon_path}/subtitle/{token}.srt")
+async def head_subtitle_prefixed(request: Request, addon_path: str, token: str) -> Response:
+    resp = _subtitle_download(request, token)
+    resp.body = b""
+    return resp
+
+# Compatibility: extra config segment before subtitle download
+@app.get("/{addon_path}/{config}/subtitle/{token}.srt")
+async def serve_subtitle_prefixed_config(request: Request, addon_path: str, config: str, token: str) -> Response:
+    return _subtitle_download(request, token)
+
+@app.head("/{addon_path}/{config}/subtitle/{token}.srt")
+async def head_subtitle_prefixed_config(request: Request, addon_path: str, config: str, token: str) -> Response:
+    resp = _subtitle_download(request, token)
+    resp.body = b""
+    return resp
