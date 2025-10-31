@@ -4,7 +4,7 @@ import httpx
 router = APIRouter()
 
 @router.get("/test-subsland")
-async def test_subsland():
+async def probe_subsland():
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "

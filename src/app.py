@@ -69,7 +69,7 @@ async def request_id_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------
 MANIFEST = {
     "id": "bg.subtitles.stremio",
-    "version": "0.1.0",
+    "version": "0.2.1",
     "name": "Bulgarian Subtitles",
     "description": "Aggregates Bulgarian subtitles from popular sources",
     "catalogs": [],
@@ -273,7 +273,13 @@ async def subtitles_prefixed(addon_path: str, media_type: str, item_id: str, req
 # Extra Vidi-compatible route (path normalization + JSON logs)
 # ---------------------------------------------------------------------
 @app.get("/subtitles/{media_type}/{imdb_id:path}")
-async def subtitles_route(media_type: str, imdb_id: str, request: Request):
+async def subtitles_route(
+    media_type: str,
+    imdb_id: str,
+    request: Request,
+    limit: Optional[int] = Query(None),
+    variants: Optional[int] = Query(None),
+):
     start = time.time()
     raw_path = imdb_id
     imdb_id = unquote(imdb_id)
@@ -310,7 +316,19 @@ async def subtitles_route(media_type: str, imdb_id: str, request: Request):
     except Exception:
         pass
 
-    results = search_subtitles(media_type, imdb_id, per_source=default_variants)
+    # Optional safer cap for non-.json route unless explicitly overridden via query
+    safe_variants_env: Optional[int] = None
+    try:
+        v = int(os.getenv("BG_SUBS_SAFE_VARIANTS", "0"))
+        if v > 0:
+            safe_variants_env = v
+    except Exception:
+        pass
+    per_source = variants if variants and variants > 0 else (safe_variants_env or default_variants)
+
+    results = search_subtitles(media_type, imdb_id, per_source=per_source)
+    if limit:
+        results = results[:limit]
 
     forward_keys = {"filename", "videoSize", "videoHash", "videoFps", "videoDuration", "videoDurationSec"}
     forward = {k: v for k, v in request.query_params.items() if k in forward_keys and v}
@@ -386,16 +404,24 @@ async def subtitles_route(media_type: str, imdb_id: str, request: Request):
         "duration_ms": round((time.time() - start) * 1000)
     }))
 
-    # If the original request path contained ".json", return the standard shape
-    # to satisfy clients that always parse an object, even on the non-.json route.
-    if had_json_suffix:
-        return JSONResponse({"subtitles": payload})
-    return JSONResponse(payload if vidi_mode else {"subtitles": payload})
+    # Response shape toggle (for clients that expect a plain array on non-.json routes)
+    array_on_plain = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
+    if array_on_plain:
+        return JSONResponse(payload)
+    # Default: object wrapper for maximum client compatibility
+    return JSONResponse({"subtitles": payload})
 
 
 # Prefixed variant for Vidi and other clients mounting the addon on a path like /v2
 @app.get("/{addon_path}/subtitles/{media_type}/{imdb_id:path}")
-async def subtitles_route_prefixed(addon_path: str, media_type: str, imdb_id: str, request: Request):
+async def subtitles_route_prefixed(
+    addon_path: str,
+    media_type: str,
+    imdb_id: str,
+    request: Request,
+    limit: Optional[int] = Query(None),
+    variants: Optional[int] = Query(None),
+):
     start = time.time()
     raw_path = imdb_id
     imdb_id = unquote(imdb_id)
@@ -428,7 +454,18 @@ async def subtitles_route_prefixed(addon_path: str, media_type: str, imdb_id: st
     except Exception:
         pass
 
-    results = search_subtitles(media_type, imdb_id, per_source=default_variants)
+    safe_variants_env: Optional[int] = None
+    try:
+        v = int(os.getenv("BG_SUBS_SAFE_VARIANTS", "0"))
+        if v > 0:
+            safe_variants_env = v
+    except Exception:
+        pass
+    per_source = variants if variants and variants > 0 else (safe_variants_env or default_variants)
+
+    results = search_subtitles(media_type, imdb_id, per_source=per_source)
+    if limit:
+        results = results[:limit]
 
     forward_keys = {"filename", "videoSize", "videoHash", "videoFps", "videoDuration", "videoDurationSec"}
     forward = {k: v for k, v in request.query_params.items() if k in forward_keys and v}
@@ -504,9 +541,10 @@ async def subtitles_route_prefixed(addon_path: str, media_type: str, imdb_id: st
         "prefix": addon_path,
     }))
 
-    if had_json_suffix:
-        return JSONResponse({"subtitles": payload})
-    return JSONResponse(payload if vidi_mode else {"subtitles": payload})
+    array_on_plain = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
+    if array_on_plain:
+        return JSONResponse(payload)
+    return JSONResponse({"subtitles": payload})
 
 # ---------------------------------------------------------------------
 # Subtitle download

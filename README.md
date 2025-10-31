@@ -1,4 +1,4 @@
-# Bulgarian Subtitles Add‑on for Stremio ![version](https://img.shields.io/badge/version-0.1.0-blue)
+# Bulgarian Subtitles Add‑on for Stremio ![version](https://img.shields.io/badge/version-0.2.1-blue)
 
 A FastAPI add‑on that aggregates Bulgarian subtitles for Stremio using hardened scrapers and an OpenSubtitles fallback. It focuses on reliability, predictable responses, and safe delivery to Stremio players.
 
