@@ -44,9 +44,25 @@ def client():
     return TestClient(app_module.app)
 
 
-def test_plain_route_object_wrapper_default(monkeypatch, client):
-    # Ensure default: no array-on-plain flag
+def test_plain_route_vidi_mode_returns_array(monkeypatch, client):
+    # Default Vidi mode should emit a plain array for compatibility
     os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
+    os.environ.pop("BG_SUBS_VIDI_MODE", None)
+
+    def stub(media_type, imdb_id, per_source=1):
+        return _fake_results(2)
+
+    monkeypatch.setattr(app_module, "search_subtitles", stub, raising=False)
+
+    resp = client.get("/subtitles/movie/tt0000001")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+
+
+def test_plain_route_object_wrapper_when_vidi_disabled(monkeypatch, client):
+    os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
+    os.environ["BG_SUBS_VIDI_MODE"] = "0"
 
     def stub(media_type, imdb_id, per_source=1):
         return _fake_results(2)
@@ -59,8 +75,11 @@ def test_plain_route_object_wrapper_default(monkeypatch, client):
     assert isinstance(data, dict) and "subtitles" in data
     assert isinstance(data["subtitles"], list)
 
+    os.environ.pop("BG_SUBS_VIDI_MODE", None)
+
 
 def test_plain_route_array_when_flag_set(monkeypatch, client):
+    os.environ["BG_SUBS_VIDI_MODE"] = "0"
     os.environ["BG_SUBS_ARRAY_ON_PLAIN"] = "1"
 
     def stub(media_type, imdb_id, per_source=1):
@@ -74,10 +93,12 @@ def test_plain_route_array_when_flag_set(monkeypatch, client):
     assert isinstance(data, list)
 
     os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
+    os.environ.pop("BG_SUBS_VIDI_MODE", None)
 
 
 def test_plain_route_limit_applied(monkeypatch, client):
     os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
+    os.environ["BG_SUBS_VIDI_MODE"] = "0"
 
     def stub(media_type, imdb_id, per_source=1):
         return _fake_results(2)
@@ -89,10 +110,13 @@ def test_plain_route_limit_applied(monkeypatch, client):
     data = resp.json()
     assert len(data["subtitles"]) == 1
 
+    os.environ.pop("BG_SUBS_VIDI_MODE", None)
+
 
 def test_safe_variants_env_passed(monkeypatch, client):
     # Verify BG_SUBS_SAFE_VARIANTS influences per_source when variants not provided
     os.environ["BG_SUBS_SAFE_VARIANTS"] = "2"
+    os.environ["BG_SUBS_VIDI_MODE"] = "0"
     seen = {"per_source": None}
 
     def stub(media_type, imdb_id, per_source=1):
@@ -106,6 +130,7 @@ def test_safe_variants_env_passed(monkeypatch, client):
     assert seen["per_source"] == 2
 
     os.environ.pop("BG_SUBS_SAFE_VARIANTS", None)
+    os.environ.pop("BG_SUBS_VIDI_MODE", None)
 
 
 def test_plain_route_omni_minimal(monkeypatch, client):
@@ -124,6 +149,31 @@ def test_plain_route_omni_minimal(monkeypatch, client):
     assert isinstance(data, list)
     assert len(data) == 1
     # Minimal fields with friendly label
+    keys = set(data[0].keys())
+    assert keys == {"id", "url", "lang", "langName", "title"}
+    assert data[0]["lang"] == "bul"
+    assert data[0]["langName"] == "Bulgarian"
+
+    os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
+    os.environ.pop("BG_SUBS_OMNI_MINIMAL", None)
+    os.environ.pop("BG_SUBS_OMNI_TOTAL_LIMIT", None)
+
+
+def test_prefixed_route_omni_minimal(monkeypatch, client):
+    os.environ["BG_SUBS_ARRAY_ON_PLAIN"] = "1"
+    os.environ["BG_SUBS_OMNI_MINIMAL"] = "1"
+    os.environ["BG_SUBS_OMNI_TOTAL_LIMIT"] = "1"
+
+    def stub(media_type, imdb_id, per_source=1):
+        return _fake_results(2)
+
+    monkeypatch.setattr(app_module, "search_subtitles", stub, raising=False)
+
+    resp = client.get("/addon/subtitles/movie/tt0000007")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
     keys = set(data[0].keys())
     assert keys == {"id", "url", "lang", "langName", "title"}
     assert data[0]["lang"] == "bul"

@@ -531,12 +531,13 @@ async def subtitles_route(
 
     # Unified response for all clients: no Omni-specific minimalization
 
+    array_on_plain_env = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
     # Optional: produce a very minimal array for Omni on the true plain path
     # Keeps Vidi/.json behavior unchanged
     # Only apply minimalization when plain-array mode is enabled; otherwise keep full fields
     if (
         not had_json_suffix
-        and os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
+        and array_on_plain_env
         and os.getenv("BG_SUBS_OMNI_MINIMAL", "").lower() in {"1", "true", "yes"}
     ):
         try:
@@ -573,7 +574,7 @@ async def subtitles_route(
         "vidi_mode": vidi_mode,
         "duration_ms": round((time.time() - start) * 1000),
         "ua": ua[:120],
-        "shape": "array" if os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1","true","yes"} else "object",
+        "shape": "array" if (vidi_mode or array_on_plain_env) else "object",
     }))
     if _debug_enabled() and payload:
         try:
@@ -598,8 +599,7 @@ async def subtitles_route(
     # Unified response for all clients: no iOS-specific minimal wrapper
 
     # Response shape toggle (for clients that expect a plain array on non-.json routes)
-    array_on_plain = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
-    if array_on_plain:
+    if vidi_mode or array_on_plain_env:
         return JSONResponse(payload)
     # Default: object wrapper for maximum client compatibility
     return JSONResponse({"subtitles": payload})
@@ -722,13 +722,14 @@ async def subtitles_route_prefixed(
             s["label"] = s.get("title") or s.get("name") or "Bulgarian Subtitles"
             s["lang"] = "bul"
             s["langName"] = "Bulgarian"
+    array_on_plain_env = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
     _sanitize_payload(payload)
 
     # Unified response for all clients: no Omni-specific minimalization
 
     if (
         not had_json_suffix
-        and os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
+        and array_on_plain_env
         and os.getenv("BG_SUBS_OMNI_MINIMAL", "").lower() in {"1", "true", "yes"}
     ):
         try:
@@ -740,12 +741,15 @@ async def subtitles_route_prefixed(
         simplified: List[Dict] = []
         for s in payload:
             title = s.get("title") or s.get("name") or "Bulgarian Subtitles"
-            simplified.append({
-                "id": s.get("id"),
-                "url": s.get("url"),
-                "lang": "bg",
-                "title": title,
-            })
+            simplified.append(
+                {
+                    "id": s.get("id"),
+                    "url": s.get("url"),
+                    "lang": s.get("lang") or LANG_ISO639_2,
+                    "langName": s.get("langName") or LANGUAGE,
+                    "title": title,
+                }
+            )
         payload = simplified
 
     try:
@@ -762,7 +766,7 @@ async def subtitles_route_prefixed(
         "duration_ms": round((time.time() - start) * 1000),
         "prefix": addon_path,
         "ua": ua[:120],
-        "shape": "array" if os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1","true","yes"} else "object",
+        "shape": "array" if (vidi_mode or array_on_plain_env) else "object",
     }))
     if _debug_enabled() and payload:
         try:
@@ -785,8 +789,7 @@ async def subtitles_route_prefixed(
 
     if had_json_suffix:
         return JSONResponse({"subtitles": payload})
-    array_on_plain = os.getenv("BG_SUBS_ARRAY_ON_PLAIN", "").lower() in {"1", "true", "yes"}
-    if array_on_plain:
+    if vidi_mode or array_on_plain_env:
         return JSONResponse(payload)
     return JSONResponse({"subtitles": payload})
 
