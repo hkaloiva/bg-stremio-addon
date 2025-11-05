@@ -23,6 +23,8 @@ log = logging.getLogger("bg_subtitles.service")
 
 LANGUAGE = "Bulgarian"
 LANG_ISO639_2 = "bul"
+# Stremio clients expect ISO-639-1 codes in the `lang` field (see stremio/stremio-addons)
+LANG_ISO639_1 = "bg"
 DEFAULT_FORMAT = "srt"
 
 PROVIDER_LABELS = {
@@ -409,7 +411,7 @@ def _ensure_utf8(data: bytes) -> Tuple[bytes, Optional[str]]:
 
 
 def _build_lang(source: Optional[str]) -> str:
-    return LANG_ISO639_2
+    return LANG_ISO639_1
 
 
 def _provider_label(source: Optional[str]) -> str:

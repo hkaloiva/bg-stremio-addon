@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, Response
 
 from bg_subtitles.service import (
     DEFAULT_FORMAT,
-    LANG_ISO639_2,
+    LANG_ISO639_1,
     LANGUAGE,
     resolve_subtitle,
     search_subtitles,
@@ -311,7 +311,7 @@ def _subtitles_response(
         prov = provider_labels.get(entry.get("source"), str(entry.get("source") or "").replace("_", " ").title())
         name_with_fps = f"[{prov}] {fps_label}" if fps_label else f"[{prov}]"
 
-        lang_value = LANG_ISO639_2
+        lang_value = LANG_ISO639_1
         if label_in_lang:
             prov = provider_labels.get(entry.get("source"), str(entry.get("source") or "").replace("_", " ").title())
             lang_value = f"{LANGUAGE} • {fps_label} • {prov}" if fps_label else f"{LANGUAGE} • {prov}"
@@ -336,7 +336,7 @@ def _subtitles_response(
     if vidi_mode:
         for sub in payload:
             sub["type"] = "subtitle"  # singular is accepted across clients
-            sub["lang"] = "bul"       # ISO-639-2
+            sub["lang"] = LANG_ISO639_1
             sub["langName"] = "Bulgarian"
             sub["label"] = sub.get("title") or sub.get("name") or "Bulgarian Subtitles"
     # Sanitize labels/names to avoid client parser issues
@@ -499,7 +499,7 @@ async def subtitles_route(
         prov = provider_labels.get(entry.get("source"), str(entry.get("source") or "").replace("_", " ").title())
         name_with_fps = f"[{prov}] {fps_label}" if fps_label else f"[{prov}]"
 
-        lang_value = LANG_ISO639_2
+        lang_value = LANG_ISO639_1
         if label_in_lang:
             prov = provider_labels.get(entry.get("source"), str(entry.get("source") or "").replace("_", " ").title())
             lang_value = f"{LANGUAGE} • {fps_label} • {prov}" if fps_label else f"{LANGUAGE} • {prov}"
@@ -519,13 +519,13 @@ async def subtitles_route(
             }
         )
 
-    # Default ON: Vidi expects friendly fields; keep ISO-639-2 code for broader compatibility
+    # Default ON: Vidi expects friendly fields; keep ISO-639-1 code visible for Stremio clients
     vidi_mode = os.getenv("BG_SUBS_VIDI_MODE", "1").lower() in {"1", "true", "yes"}
     if vidi_mode:
         for s in payload:
             s["type"] = "subtitle"  # some players expect singular
             s["label"] = s.get("title") or s.get("name") or "Bulgarian Subtitles"
-            s["lang"] = "bul"       # ISO-639-2 code; widely accepted
+            s["lang"] = LANG_ISO639_1
             s["langName"] = "Bulgarian"
     _sanitize_payload(payload)
 
@@ -692,7 +692,7 @@ async def subtitles_route_prefixed(
         prov = provider_labels.get(entry.get("source"), str(entry.get("source") or "").replace("_", " ").title())
         name_with_fps = f"[{prov}] {fps_label}" if fps_label else f"[{prov}]"
 
-        lang_value = LANG_ISO639_2
+        lang_value = LANG_ISO639_1
         if label_in_lang:
             prov = provider_labels.get(entry.get("source"), str(entry.get("source") or "").replace("_", " ").title())
             lang_value = f"{LANGUAGE} • {fps_label} • {prov}" if fps_label else f"{LANGUAGE} • {prov}"
@@ -717,7 +717,7 @@ async def subtitles_route_prefixed(
         for s in payload:
             s["type"] = "subtitle"
             s["label"] = s.get("title") or s.get("name") or "Bulgarian Subtitles"
-            s["lang"] = "bul"
+            s["lang"] = LANG_ISO639_1
             s["langName"] = "Bulgarian"
     _sanitize_payload(payload)
 

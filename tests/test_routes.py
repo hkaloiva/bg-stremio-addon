@@ -18,7 +18,7 @@ def _fake_results(n=2):
         {
             "id": "unacs:0",
             "language": "Bulgarian",
-            "lang": "bul",
+            "lang": "bg",
             "token": "t1",
             "filename": "A.srt",
             "format": "srt",
@@ -28,7 +28,7 @@ def _fake_results(n=2):
         {
             "id": "subs_sab:1",
             "language": "Bulgarian",
-            "lang": "bul",
+            "lang": "bg",
             "token": "t2",
             "filename": "B.srt",
             "format": "srt",

@@ -34,7 +34,7 @@ Response shape (`/subtitles/...`):
   "subtitles": [
     {
       "id": "unacs:0",
-      "lang": "bul",
+      "lang": "bg",
       "langName": "Bulgarian",
       "url": "http://localhost:8080/subtitle/<token>.srt",
       "name": "[UNACS] The Shawshank Redemption ...",
@@ -173,7 +173,7 @@ Required components and external services
 Client compatibility (Omni/Vidi)
 - Omni: uses `GET /subtitles/{type}/{id}.json` and expects an object `{ "subtitles": [...] }` — provided.
 - Vidi: often calls `GET /subtitles/{type}/{id}`. Some builds append `.json` in that path; the server detects `.json` and still returns the standard object.
-- Items include conservative fields recognized by both: `type="subtitle"`, `lang="bul"`, `langName="Bulgarian"`, `label`, `url`, `format`.
+- Items include conservative fields recognized by both: `type="subtitle"`, `lang="bg"`, `langName="Bulgarian"`, `label`, `url`, `format`.
 
 Prefixes (mounting under `/v2`)
 - The server exposes all routes with an optional prefix segment: `/{addon_path}/...`.
