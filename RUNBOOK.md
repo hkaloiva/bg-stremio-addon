@@ -23,7 +23,7 @@ Required secrets in GitHub repository settings:
 
 ## Environments
 
-- Staging: safe place to auto-deploy tagged images.
+- Staging: safe place to auto-deploy tagged images. Current domain: `https://bg-subs-staging-kaloyan8907-e2127367.koyeb.app/`.
 - Production: manually promoted with pinned tags via script.
 
 Koyeb configuration expectations (both envs):
