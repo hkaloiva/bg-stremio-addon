@@ -548,12 +548,15 @@ async def subtitles_route(
         simplified: List[Dict] = []
         for s in payload:
             title = s.get("title") or s.get("name") or "Bulgarian Subtitles"
-            simplified.append({
-                "id": s.get("id"),
-                "url": s.get("url"),
-                "lang": "bg",  # 2-letter to satisfy stricter clients
-                "title": title,
-            })
+            simplified.append(
+                {
+                    "id": s.get("id"),
+                    "url": s.get("url"),
+                    "lang": s.get("lang") or LANG_ISO639_2,
+                    "langName": s.get("langName") or LANGUAGE,
+                    "title": title,
+                }
+            )
         payload = simplified
 
     # Debug pulse with UA + shape for client diagnostics

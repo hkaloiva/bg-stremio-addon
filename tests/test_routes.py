@@ -123,9 +123,11 @@ def test_plain_route_omni_minimal(monkeypatch, client):
     data = resp.json()
     assert isinstance(data, list)
     assert len(data) == 1
-    # Minimal fields only
+    # Minimal fields with friendly label
     keys = set(data[0].keys())
-    assert keys == {"id", "url", "lang", "title"}
+    assert keys == {"id", "url", "lang", "langName", "title"}
+    assert data[0]["lang"] == "bul"
+    assert data[0]["langName"] == "Bulgarian"
 
     os.environ.pop("BG_SUBS_ARRAY_ON_PLAIN", None)
     os.environ.pop("BG_SUBS_OMNI_MINIMAL", None)
