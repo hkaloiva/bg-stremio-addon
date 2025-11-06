@@ -34,7 +34,7 @@ def _headers() -> Dict[str, str]:
     return {
         "Api-Key": _get_api_key(),
         "User-Agent": _get_user_agent(),
-        "Accept": "application/json",
+        "Accept": "application/json, */*;q=0.5",
     }
 
 
@@ -143,16 +143,35 @@ def download(file_id: str, fallback_name: Optional[str] = None) -> Dict[str, byt
 
     headers = _headers()
     headers["Content-Type"] = "application/json"
+    payload = {"file_id": int(file_id)}
     try:
         response = requests.post(
             f"{API_BASE}/download",
             headers=headers,
-            json={"file_id": int(file_id)},
+            json=payload,
             timeout=10,
         )
         response.raise_for_status()
-    except (ValueError, requests.RequestException) as exc:  # noqa: BLE001
+    except ValueError as exc:  # noqa: BLE001
         raise RuntimeError("OpenSubtitles download request failed") from exc
+    except requests.HTTPError as exc:  # noqa: BLE001
+        if exc.response is not None and exc.response.status_code == 406:
+            log.info("OpenSubtitles responded 406; retrying with explicit SRT format")
+            payload_with_format = {**payload, "sub_format": "srt"}
+            response = requests.post(
+                f"{API_BASE}/download",
+                headers=headers,
+                json=payload_with_format,
+                timeout=10,
+            )
+            try:
+                response.raise_for_status()
+            except requests.RequestException as exc2:  # noqa: BLE001
+                raise RuntimeError(_format_http_error(exc2)) from exc2
+        else:
+            raise RuntimeError(_format_http_error(exc)) from exc
+    except requests.RequestException as exc:  # noqa: BLE001
+        raise RuntimeError(_format_http_error(exc)) from exc
 
     data = response.json()
     link = data.get("link")
@@ -167,3 +186,20 @@ def download(file_id: str, fallback_name: Optional[str] = None) -> Dict[str, byt
         raise RuntimeError("OpenSubtitles file download failed") from exc
 
     return {"data": file_response.content, "fname": file_name}
+
+
+def _format_http_error(exc: requests.RequestException) -> str:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return "OpenSubtitles download request failed"
+    message = response.text
+    if response.headers.get("Content-Type", "").startswith("application/json"):
+        try:
+            payload = response.json()
+            message = payload.get("message") or payload.get("status") or message
+        except ValueError:
+            pass
+    status_text = f"HTTP {response.status_code}"
+    if message:
+        return f"OpenSubtitles download request failed: {status_text} - {message}"
+    return f"OpenSubtitles download request failed: {status_text}"
