@@ -37,6 +37,7 @@ COLOR_TAG_RE = re.compile(r"\[/?COLOR[^\]]*\]", re.IGNORECASE)
 STYLE_TAG_RE = re.compile(r"\[/?[BIU]\]", re.IGNORECASE)
 WHITESPACE_RE = re.compile(r"\s+")
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+MICRODVD_LINE_RE = re.compile(r"^\{(?P<start>\d+)\}\{(?P<end>\d+)\}(?P<text>.*)$")
 
 RESULT_CACHE = TTLCache(default_ttl=1800)   # 30 minutes for positive results
 EMPTY_CACHE = TTLCache(default_ttl=300)     # 5 minutes for empty responses
@@ -257,6 +258,7 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
     payload = _decode_payload(token)
     source_id = payload.get("source")
     sub_url = payload.get("url")
+    fps_value = _parse_fps(payload.get("fps"))
 
     if not source_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subtitle token")
@@ -301,6 +303,19 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
         )
 
     utf8_bytes, encoding = _ensure_utf8(content)
+
+    if fmt == "sub":
+        try:
+            microdvd_text = utf8_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            microdvd_text = ""
+        if _looks_like_microdvd(microdvd_text):
+            converted = _microdvd_to_srt(microdvd_text, fps_value)
+            if converted:
+                utf8_bytes = converted.encode("utf-8")
+                encoding = "utf-8"
+                fmt = "srt"
+                name = Path(name).with_suffix(".srt").name
     if fmt in {"srt", "txt"}:
         try:
             text = utf8_bytes.decode("utf-8", errors="replace")
@@ -389,12 +404,82 @@ def _looks_textual_sub(data: bytes) -> bool:
     return ratio >= 0.85
 
 
-def _looks_like_microdvd(_text: str) -> bool:
-    return False
+def _parse_fps(value: object) -> Optional[float]:
+    try:
+        fps = float(value)
+        if fps > 0:
+            return fps
+    except (TypeError, ValueError):
+        return None
+    return None
 
 
-def _microdvd_to_srt(text: str, _fps: float) -> str:
-    return text
+def _looks_like_microdvd(text: str) -> bool:
+    if not text:
+        return False
+    lines = [ln.strip() for ln in text.replace("\r", "\n").split("\n") if ln.strip()]
+    if not lines:
+        return False
+    matches = 0
+    checked = 0
+    for line in lines:
+        checked += 1
+        if MICRODVD_LINE_RE.match(line):
+            matches += 1
+        if checked >= 50:
+            break
+    return matches >= 3 or (matches >= 1 and matches == checked)
+
+
+def _microdvd_to_srt(text: str, fps: Optional[float]) -> str:
+    fps_value = fps or 23.976
+    if fps_value <= 0:
+        fps_value = 23.976
+
+    def frame_to_ts(frame: int) -> str:
+        seconds = max(frame, 0) / fps_value
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds - hours * 3600 - minutes * 60
+        return f"{hours:02}:{minutes:02}:{secs:06.3f}".replace(".", ",")
+
+    entries: List[Tuple[int, int, List[str]]] = []
+    current: Optional[Tuple[int, int, List[str]]] = None
+
+    for raw_line in text.replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = MICRODVD_LINE_RE.match(line)
+        if match:
+            start = int(match.group("start"))
+            end = int(match.group("end"))
+            body = match.group("text") or ""
+            body = re.sub(r"\{[^}]*\}", "", body)
+            body_lines = [seg.strip() for seg in body.split("|") if seg.strip()]
+            current = (start, end, body_lines)
+            entries.append(current)
+        elif current is not None:
+            body = re.sub(r"\{[^}]*\}", "", line)
+            extra = [seg.strip() for seg in body.split("|") if seg.strip()]
+            if extra:
+                current[2].extend(extra)
+
+    if not entries:
+        return text
+
+    output: List[str] = []
+    for idx, (start, end, lines) in enumerate(entries, start=1):
+        if end <= start:
+            end = start + 1
+        output.append(str(idx))
+        output.append(f"{frame_to_ts(start)} --> {frame_to_ts(end)}")
+        if lines:
+            output.extend(lines)
+        output.append("")
+
+    result = "\n".join(output).strip()
+    return f"{result}\n" if result else text
 
 
 def _ensure_utf8(data: bytes) -> Tuple[bytes, Optional[str]]:
