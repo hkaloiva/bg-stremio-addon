@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 import re
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 from urllib.parse import unquote
 
 import requests
@@ -22,6 +23,29 @@ class StremioID:
     base: str
     season: Optional[str]
     episode: Optional[str]
+    extra: Dict[str, str] = field(default_factory=dict)
+
+
+def _parse_extra_params(fragment: str) -> Dict[str, str]:
+    params: Dict[str, str] = {}
+    if not fragment:
+        return params
+
+    # Replace additional path separators with '&' so strings like
+    # "filename=Foo/Bar&videoHash=..." still get tokenized.
+    normalized = fragment.replace("/", "&")
+    for chunk in normalized.split("&"):
+        if not chunk or "=" not in chunk:
+            continue
+        key, value = chunk.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if value.endswith(".json"):
+            value = value[:-5]
+        params[key] = value
+    return params
 
 
 def parse_stremio_id(raw_id: str) -> StremioID:
@@ -41,11 +65,16 @@ def parse_stremio_id(raw_id: str) -> StremioID:
             break
         s = decoded
 
+    tail = ""
+    if "/" in s:
+        s, tail = s.split("/", 1)
+
     parts = s.split(":")
     base = parts[0] if parts else s
     season = parts[1] if len(parts) > 1 and parts[1] else None
     episode = parts[2] if len(parts) > 2 and parts[2] else None
-    return StremioID(base=base, season=season, episode=episode)
+    extra = _parse_extra_params(tail)
+    return StremioID(base=base, season=season, episode=episode, extra=extra)
 
 
 def fetch_cinemeta_meta(media_type: str, imdb_id: str) -> Optional[dict]:
@@ -86,10 +115,66 @@ def extract_episode(meta: dict, season: Optional[str], episode: Optional[str]) -
     return None, release
 
 
-def build_scraper_item(media_type: str, raw_id: str) -> Optional[dict]:
+def _derive_title_from_filename(name: str) -> str:
+    if not name:
+        return ""
+
+    candidate = os.path.splitext(name)[0]
+    candidate = re.sub(r"[\._]+", " ", candidate)
+    candidate = re.sub(r"\[[^\]]*\]|\([^\)]*\)", " ", candidate)
+    candidate = re.sub(
+        r"\b(480p|720p|1080p|1440p|2160p|4k|8k|web[- ]?dl|webrip|bluray|bdrip|hdrip|dvdrip|x26[45]|h26[45]|hevc|aac|dts|multi|subs?|proper|repack|extended|remastered|hdtv|uhd)\b",
+        " ",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(r"\s+", " ", candidate).strip()
+    return candidate
+
+
+def _fallback_item(media_type: str, tokens: StremioID, hints: Optional[dict]) -> Optional[dict]:
+    hints = hints or {}
+    filename_hint = hints.get("filename") or tokens.extra.get("filename")
+    title_hint = hints.get("title") or tokens.extra.get("title")
+    if not title_hint and filename_hint:
+        title_hint = _derive_title_from_filename(unquote(filename_hint))
+
+    if not title_hint:
+        return None
+
+    year_hint = hints.get("year") or tokens.extra.get("year")
+    if not year_hint and filename_hint:
+        match = re.search(r"(19|20)\d{2}", filename_hint)
+        if match:
+            year_hint = match.group(0)
+
+    item = {
+        "title": title_hint,
+        "year": normalize_year(year_hint),
+        "file_original_path": "",
+        "mansearch": False,
+        "mansearchstr": "",
+        "tvshow": "",
+        "season": "",
+        "episode": "",
+    }
+
+    if media_type == "series":
+        item["tvshow"] = hints.get("tvshow") or title_hint
+        item["season"] = tokens.season or ""
+        item["episode"] = tokens.episode or ""
+
+    return item
+
+
+def build_scraper_item(media_type: str, raw_id: str, hints: Optional[dict] = None) -> Optional[dict]:
     tokens = parse_stremio_id(raw_id)
     meta = fetch_cinemeta_meta(media_type, tokens.base)
     if not meta:
+        fallback = _fallback_item(media_type, tokens, hints)
+        if fallback:
+            log.warning("Falling back to filename-derived metadata for %s", tokens.base)
+            return fallback
         return None
 
     episode, release = extract_episode(meta, tokens.season, tokens.episode)

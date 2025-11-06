@@ -99,6 +99,25 @@ def _sanitize_payload(items: List[dict]) -> None:
                         pass
                 it[key] = cleaned
 
+
+def _build_search_hints(request: Request) -> Dict[str, str]:
+    hints: Dict[str, str] = {}
+    qp = request.query_params
+
+    filename = qp.get("filename") or qp.get("fileName")
+    if filename:
+        hints["filename"] = filename
+
+    title = qp.get("title") or qp.get("videoTitle") or qp.get("name")
+    if title:
+        hints["title"] = title
+
+    year = qp.get("year") or qp.get("videoYear")
+    if year:
+        hints["year"] = year
+
+    return hints
+
 # ---------------------------------------------------------------------
 # App + middleware
 # ---------------------------------------------------------------------
@@ -251,7 +270,11 @@ def _subtitles_response(
         pass
 
     per_source = variants if variants and variants > 0 else (json_safe_variants or default_variants)
-    results = search_subtitles(media_type, item_id, per_source=per_source)
+    hints = _build_search_hints(request)
+    if hints:
+        results = search_subtitles(media_type, item_id, per_source=per_source, hints=hints)
+    else:
+        results = search_subtitles(media_type, item_id, per_source=per_source)
     if _debug_enabled():
         try:
             print(json.dumps({
@@ -460,7 +483,11 @@ async def subtitles_route(
         pass
     per_source = variants if variants and variants > 0 else (safe_variants_env or default_variants)
 
-    results = search_subtitles(media_type, imdb_id, per_source=per_source)
+    hints = _build_search_hints(request)
+    if hints:
+        results = search_subtitles(media_type, imdb_id, per_source=per_source, hints=hints)
+    else:
+        results = search_subtitles(media_type, imdb_id, per_source=per_source)
     if limit:
         results = results[:limit]
 
@@ -653,7 +680,11 @@ async def subtitles_route_prefixed(
         pass
     per_source = variants if variants and variants > 0 else (safe_variants_env or default_variants)
 
-    results = search_subtitles(media_type, imdb_id, per_source=per_source)
+    hints = _build_search_hints(request)
+    if hints:
+        results = search_subtitles(media_type, imdb_id, per_source=per_source, hints=hints)
+    else:
+        results = search_subtitles(media_type, imdb_id, per_source=per_source)
     if limit:
         results = results[:limit]
 

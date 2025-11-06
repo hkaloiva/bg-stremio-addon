@@ -83,7 +83,12 @@ def _decode_payload(token: str) -> Dict:
         )
 
 
-def search_subtitles(media_type: str, raw_id: str, per_source: int = 1) -> List[Dict]:
+def search_subtitles(
+    media_type: str,
+    raw_id: str,
+    per_source: int = 1,
+    hints: Optional[Dict[str, str]] = None,
+) -> List[Dict]:
     cache_key = f"{media_type}:{raw_id}:k{per_source}"
 
     cached = RESULT_CACHE.get(cache_key)
@@ -93,7 +98,7 @@ def search_subtitles(media_type: str, raw_id: str, per_source: int = 1) -> List[
     if EMPTY_CACHE.get(cache_key) is not None:
         return []
 
-    item = build_scraper_item(media_type, raw_id)
+    item = build_scraper_item(media_type, raw_id, hints=hints)
     if not item:
         EMPTY_CACHE.set(cache_key, True)
         return []
