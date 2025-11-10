@@ -1,0 +1,31 @@
+name: Smart Refresh Prewarm
+
+on:
+  schedule:
+    # Daily at 02:30 UTC
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  prewarm:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ secrets.BG_SUBS_BASE_URL || 'https://coastal-flor-c5722c.koyeb.app' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install httpx==0.27.2
+
+      - name: Pre-warm top titles
+        run: |
+          python scripts/prewarm_top_titles.py \
+            --base-url "$BASE_URL" \
+            --titles-file config/popular_titles.json \
+            --limit 100 \
+            --concurrency 8

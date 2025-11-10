@@ -5,9 +5,9 @@ Always proxies through Cloudflare Worker to bypass Cloudflare challenge.
 Author: Kaloyan Ivanov (2025)
 """
 
-import requests, re, urllib.parse, io, random
+import requests, re, urllib.parse, io, random, os, html
 from .nsub import log_my, savetofile, list_key
-from .common import *
+from .common import BeautifulSoup
 
 # --- Configuration ---
 s = requests.Session()
@@ -46,40 +46,67 @@ def _proxy_get(url):
         return None
 
 
-def _parse_search_results(html, ep_filter, results):
+def _clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _extract_tooltip(payload: str, fallback: str) -> str:
+    if not payload:
+        return fallback
+    try:
+        cleaned = payload
+        if cleaned.startswith("Tip("):
+            cleaned = cleaned[4:]
+        if cleaned.endswith(")"):
+            cleaned = cleaned[:-1]
+        cleaned = cleaned.strip("'\"")
+        cleaned = html.unescape(cleaned)
+        soup = BeautifulSoup(cleaned, "html.parser")
+        text = soup.get_text(" ", strip=True)
+        return text or fallback
+    except Exception:
+        return fallback
+
+
+def _parse_search_results(page_html, ep_filter, results):
     """Extract subtitle listings from SubsLand search HTML."""
-    data = html.replace("\t", "").replace("\n", "").replace("\r", "")
-    if "Не са открити" in data:
+    if "downloadsubtitles" not in page_html:
         return
 
-    pattern = re.compile(
-        r'<td align="left"><a href=(.+?) .+?<b>(.+?)</b>.+?"UnTip\(\)" >(.+?)</a>.+?<a href=.+?>.+?<a href=(.+?) onMouseover'
-    )
-
-    for link, release, title, ziplink in pattern.findall(data):
-        check = re.search(r"(s\d\de\d\d)", title.lower())
-        ep = check.group(1) if check else ""
-        if ep_filter and ep.lower() != ep_filter.lower():
+    soup = BeautifulSoup(page_html, "html.parser")
+    for row in soup.find_all("tr"):
+        download_link = row.find("a", href=re.compile(r"downloadsubtitles", re.IGNORECASE))
+        title_link = row.find("a", href=re.compile(r"/subtitles/", re.IGNORECASE))
+        if not download_link or not title_link:
             continue
 
-        info = (
-            title
-            if "</b>" in release
-            else f"{title} / {release.replace('&lt;br&gt;', ' / ')}"
-        )
+        title_text = _clean_text(title_link.get_text(" ", strip=True))
+        tooltip = _extract_tooltip(title_link.get("onmouseover", ""), title_text)
 
-        results.append(
-            {
-                "url": ziplink,
-                "FSrc": "[COLOR CC00FF00][B][I](subsland)[/I][/B][/COLOR]",
-                "info": info,
-                "year": "",
-                "cds": "",
-                "fps": "",
-                "rating": "0.0",
-                "id": __name__,
-            }
-        )
+        check = re.search(r"(s\d\de\d\d)", title_text.lower())
+        ep = check.group(1) if check else ""
+        if ep_filter and (not ep or ep.lower() != ep_filter.lower()):
+            continue
+
+        lang_flag = ""
+        flag_img = row.find("img", src=re.compile("bulgaria", re.IGNORECASE))
+        if flag_img:
+            lang_flag = "bg"
+        elif row.find("img", src=re.compile("britain|usa|english", re.IGNORECASE)):
+            lang_flag = "en"
+
+        entry = {
+            "url": download_link.get("href"),
+            "FSrc": "[COLOR CC00FF00][B][I](subsland)[/I][/B][/COLOR]",
+            "info": tooltip or title_text,
+            "year": "",
+            "cds": "",
+            "fps": "",
+            "rating": "0.0",
+            "id": __name__,
+            "lang_flag": lang_flag,
+        }
+        results.append(entry)
 
 
 # --- Public API ---
@@ -96,9 +123,27 @@ def _filter_results(results, search_term, year_hint):
     if not tokens and not year_token:
         return results
 
+    # Optional strict Bulgarian filter and basic English blacklist
+    strict_bg = str(os.getenv("BG_SUBS_SUBSLAND_STRICT_BG", "")).lower() in {"1", "true", "yes"}
+    blacklist_en = {"yify", "yts", "english"}
+
+    def _has_cyrillic(s: str) -> bool:
+        try:
+            return re.search(r"[А-Яа-я]", s) is not None
+        except Exception:
+            return False
+
     filtered = []
     for entry in results:
-        info_norm = " ".join(re.split(r"[^a-z0-9]+", str(entry.get("info") or "").lower()))
+        raw_info = str(entry.get("info") or "")
+        info_norm = " ".join(re.split(r"[^a-z0-9]+", raw_info.lower()))
+        lang_flag = entry.get("lang_flag")
+        # If strict BG requested, keep only entries explicitly marked as Bulgarian or with Cyrillic info
+        if strict_bg and not (lang_flag == "bg" or _has_cyrillic(raw_info)):
+            continue
+        # Basic English blacklist: drop obvious English-only packs (e.g., YIFY/YTS)
+        if any(tok in info_norm for tok in blacklist_en) and not (lang_flag == "bg" or _has_cyrillic(raw_info)):
+            continue
         if tokens and not all(token in info_norm for token in tokens):
             continue
         if year_token and year_token not in info_norm:
@@ -138,10 +183,15 @@ def read_sub(search_term, year_hint=""):
 
     _parse_search_results(r.text, ep_code, results)
     results = _filter_results(results, search_term, year_hint)
+    clean_results = []
+    for entry in results:
+        entry = dict(entry)
+        entry.pop("lang_flag", None)
+        clean_results.append(entry)
     for k in list_key:
-        log_my(getattr(results, k, []))
+        log_my(getattr(clean_results, k, []))
 
-    return results
+    return clean_results
 
 
 def get_sub(sub_id, sub_url, filename):
