@@ -134,21 +134,42 @@ def get_search_string(item: Dict[str, Any]) -> str:
     if item.get("mansearch"):
         return item.get("mansearchstr", search_string)
 
+    stripped = search_string.strip()
+    if stripped.isdigit():
+        # Treat pure numeric titles as movies (e.g., "1917", "300").
+        return stripped
+
     for name_clean in movie_name_re:
         search_string = re.sub(name_clean, "", search_string)
 
     if not item.get("tvshow"):
         for tv_match in tv_show_list_re:
             m = re.match(tv_match, search_string, re.IGNORECASE)
-            if m:
-                item["tvshow"] = m.group("tvshow")
-                item["season"] = m.group("season")
-                item["episode"] = m.group("episode")
+            if not m:
+                continue
+            season = m.group("season")
+            episode = m.group("episode")
+            # Skip false positives where contiguous digits are likely a year (e.g. "2049").
+            if season and episode:
                 try:
-                    item["title"] = m.group("title")
-                except IndexError:
-                    pass
-                break
+                    combined = f"{int(season):02d}{int(episode):02d}"
+                except Exception:
+                    combined = ""
+                if len(season) + len(episode) == 4:
+                    try:
+                        value = int(combined)
+                        if 1900 <= value <= 2099:
+                            continue
+                    except Exception:
+                        pass
+            item["tvshow"] = m.group("tvshow")
+            item["season"] = season
+            item["episode"] = episode
+            try:
+                item["title"] = m.group("title")
+            except IndexError:
+                pass
+            break
 
     if item.get("tvshow"):
         if item.get("season") and item.get("episode"):
