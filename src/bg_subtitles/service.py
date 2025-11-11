@@ -12,7 +12,9 @@ from pathlib import Path
 import os
 import time
 import threading
+import uuid
 from typing import Dict, List, Optional, Tuple, Iterable, Set
+from collections import defaultdict
 
 from charset_normalizer import from_bytes
 from fastapi import HTTPException
@@ -24,7 +26,7 @@ from .metadata import build_scraper_item, parse_stremio_id
 from .sources.nsub import get_sub
 from .sources import opensubtitles as opensubtitles_source
 from .sources import nsub as nsub_module
-from .sources.common import get_search_string
+from .sources.common import get_search_string, REQUEST_ID, _normalize_query
 
 log = logging.getLogger("bg_subtitles.service")
 
@@ -115,10 +117,12 @@ def _env_int(name: str, default: int | None) -> int | None:
 RESULT_CACHE = TTLCache(default_ttl=1800, max_size=_env_int("BG_SUBS_RESULT_CACHE_MAX", None))
 EMPTY_CACHE = TTLCache(default_ttl=300, max_size=_env_int("BG_SUBS_EMPTY_CACHE_MAX", None))
 RESOLVED_CACHE = TTLCache(default_ttl=300, max_size=_env_int("BG_SUBS_RESOLVED_CACHE_MAX", None))
+TVDB_TOKEN_CACHE = TTLCache(default_ttl=3600, max_size=1)
 
 # In-flight singleflight guard: only one resolution per token at a time
 _INFLIGHT_LOCK = threading.Lock()
 _INFLIGHT_EVENTS: dict[str, threading.Event] = {}
+_PENDING_EMPTY_MARKS: Dict[str, asyncio.Task] = {}
 
 DEFAULT_PROVIDER_TIMEOUT = float(getattr(nsub_module, "SOURCE_TIMEOUT", 12.0))
 VLAD_TIMEOUT = _env_float("BG_SUBS_TIMEOUT_VLAD00N", 3.0)
@@ -128,6 +132,12 @@ try:
     PROVIDER_CONCURRENCY_LIMIT = max(1, _concurrency_raw)
 except Exception:
     PROVIDER_CONCURRENCY_LIMIT = 5
+FALLBACK_META_ENABLED = os.getenv("BG_SUBS_FALLBACK_META", "1").lower() in {"1", "true", "yes"}
+_PROVIDER_CONCURRENCY_PER_SOURCE = max(1, int(os.getenv("BG_SUBS_PROVIDER_CONCURRENCY", "2")))
+_PROVIDER_TIMEOUT = max(0.5, float(os.getenv("BG_SUBS_PROVIDER_TIMEOUT_MS", "3000")) / 1000.0)
+_PROVIDER_RETRIES = max(0, int(os.getenv("BG_SUBS_PROVIDER_RETRIES", "1")))
+DOWNLOAD_RETRY_MAX = max(1, int(os.getenv("BG_SUBS_DOWNLOAD_RETRIES", "3")))
+DOWNLOAD_RETRY_DELAY = max(0.0, float(os.getenv("BG_SUBS_DOWNLOAD_RETRY_DELAY", "0.3")))
 
 
 def _result_cache_key(media_type: str, raw_id: str, per_source: int, player: Optional[Dict[str, str]]) -> str:
@@ -153,6 +163,198 @@ def _provider_debug_enabled() -> bool:
         return os.getenv("BG_SUBS_DEBUG_PROVIDER_COUNTS", "").lower() in {"1", "true", "yes"}
     except Exception:
         return False
+
+
+def _debug_cache_enabled() -> bool:
+    try:
+        return os.getenv("BG_SUBS_DEBUG_CACHE", "").lower() in {"1", "true", "yes"}
+    except Exception:
+        return False
+
+
+def _infer_title_year_from_player(player: Dict[str, str], raw_id: str) -> Tuple[str, Optional[str]]:
+    candidate = (
+        player.get("filename")
+        or player.get("videoName")
+        or player.get("name")
+        or raw_id
+    )
+    stem = candidate
+    try:
+        stem = Path(candidate).stem
+    except Exception:
+        stem = candidate
+    cleaned = stem.replace(".", " ").replace("_", " ").strip()
+    match = re.search(r"(19|20)\d{2}", cleaned)
+    year = match.group(0) if match else ""
+    title = cleaned or raw_id
+    return title, year
+
+
+def _extract_year_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+    match = re.search(r"(19|20)\d{2}", text)
+    return match.group(0) if match else None
+
+
+def _extract_provider_token(raw_id: str) -> Optional[str]:
+    parts = raw_id.split(":", 1)
+    if len(parts) < 2:
+        return None
+    remainder = parts[1]
+    return remainder.split(":", 1)[0].strip() or None
+
+def _normalize_fragment(text: str) -> str:
+    try:
+        tokens = [tok for tok in re.split(r"[^a-z0-9]+", text.lower()) if tok]
+        return " ".join(tokens)
+    except Exception:
+        return str(text or "").lower().strip()
+
+def _get_tvdb_token(api_key: str) -> Optional[str]:
+    cached = TVDB_TOKEN_CACHE.get("token")
+    if cached:
+        return cached
+    try:
+        resp = httpx.post(
+            "https://api4.thetvdb.com/v4/login",
+            json={"apikey": api_key},
+            timeout=5.0,
+        )
+        resp.raise_for_status()
+        data = resp.json() or {}
+        token = (data.get("data") or {}).get("token")
+        if token:
+            TVDB_TOKEN_CACHE.set("token", token)
+            return token
+    except Exception as exc:  # noqa: BLE001
+        status = getattr(getattr(exc, "response", None), "status_code", "unknown")
+        log.warning("[metadata] TVDB login failed (status=%s): %s", status, exc)
+    return None
+
+
+def _resolve_tmdb_metadata(raw_id: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    if not raw_id.lower().startswith("tmdb:"):
+        return None, None, None
+    tmdb_id = raw_id.split(":", 1)[1].strip()
+    if not tmdb_id:
+        return None, None, None
+
+    for base in ("https://v3-cinemeta.strem.io", "https://cinemeta-live.strem.io"):
+        url = f"{base}/meta/tmdb/{tmdb_id}.json"
+        try:
+            resp = httpx.get(url, timeout=5.0)
+            if getattr(resp, "status_code", 200) == 404:
+                log.info("[metadata] Cinemeta returned 404 for tmdb id=%s", tmdb_id)
+                continue
+            resp.raise_for_status()
+            payload = resp.json()
+            meta = payload.get("meta") or {}
+            title = meta.get("name")
+            release = meta.get("releaseInfo") or meta.get("released") or meta.get("year")
+            year = _extract_year_from_text(str(release or ""))
+            imdb_id = meta.get("imdb_id") or meta.get("imdbId")
+            if title:
+                log.info("[metadata] tmdb id resolved to '%s' (%s)", title, year or "unknown")
+                return title, year, imdb_id
+        except Exception:
+            continue
+
+    tmdb_key = os.getenv("TMDB_KEY", "").strip()
+    if not tmdb_key:
+        log.warning("[metadata] TMDB API fallback skipped (missing TMDB_KEY)")
+        return None, None, None
+
+    params = {"api_key": tmdb_key}
+    url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
+    try:
+        resp = httpx.get(url, params=params, timeout=5.0)
+        status = getattr(resp, "status_code", 200)
+        if status == 404:
+            log.warning("[metadata] TMDB API fallback failed (status=404)")
+            return None, None, None
+        resp.raise_for_status()
+        payload = resp.json()
+        title = payload.get("title") or payload.get("original_title")
+        release = payload.get("release_date") or payload.get("first_air_date") or ""
+        imdb_id = payload.get("imdb_id")
+        year = None
+        if isinstance(release, str) and release:
+            year = release[:4]
+        if not year:
+            year = _extract_year_from_text(release)
+        if title:
+            log.info("[metadata] TMDB API fallback succeeded → \"%s\" (%s)", title, year or "unknown")
+            return title, year, imdb_id
+        log.warning("[metadata] TMDB API fallback missing title (status=%s)", status)
+    except Exception as exc:  # noqa: BLE001
+        status = getattr(getattr(exc, "response", None), "status_code", "unknown")
+        log.warning("[metadata] TMDB API fallback failed (status=%s): %s", status, exc)
+    return None, None, None
+
+
+def _resolve_tvdb_metadata(raw_id: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    if not raw_id.lower().startswith("tvdb:"):
+        return None, None, None
+    parts = raw_id.split(":", 1)
+    if len(parts) < 2:
+        return None, None, None
+    tvdb_id = parts[1].strip()
+    tvdb_key = os.getenv("TVDB_KEY", "").strip()
+    if not tvdb_key:
+        log.warning("[metadata] TVDB API fallback skipped (missing TVDB_KEY)")
+        return None, None, None
+    token = _get_tvdb_token(tvdb_key)
+    if not token:
+        log.warning("[metadata] TVDB API fallback skipped (token unavailable)")
+        return None, None, None
+    url = f"https://api4.thetvdb.com/v4/series/{tvdb_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+    try:
+        resp = httpx.get(url, headers=headers, timeout=5.0)
+        status = getattr(resp, "status_code", 200)
+        if status == 404:
+            log.warning("[metadata] TVDB API fallback failed (status=404)")
+            return None, None, None
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        data = payload.get("data") or {}
+        title = data.get("name")
+        release = data.get("firstAired") or data.get("year")
+        year = _extract_year_from_text(str(release or ""))
+        imdb_id = data.get("imdbId")
+        if title:
+            log.info("[metadata] TVDB API fallback succeeded → \"%s\" (%s)", title, year or "unknown")
+            return title, year, imdb_id
+        log.warning("[metadata] TVDB API fallback missing title (status=%s)", status)
+    except Exception as exc:  # noqa: BLE001
+        status = getattr(getattr(exc, "response", None), "status_code", "unknown")
+        log.warning("[metadata] TVDB API fallback failed (status=%s): %s", status, exc)
+    return None, None, None
+
+
+def _cancel_pending_empty_mark(key: str) -> None:
+    task = _PENDING_EMPTY_MARKS.pop(key, None)
+    if task:
+        task.cancel()
+
+
+async def _schedule_empty_mark(key: str) -> None:
+    async def _mark():
+        try:
+            await asyncio.sleep(2)
+            EMPTY_CACHE.set(key, True)
+            if _debug_cache_enabled():
+                log.info("[cache] deferred EMPTY_CACHE write for %s", key)
+        finally:
+            _PENDING_EMPTY_MARKS.pop(key, None)
+
+    task = asyncio.create_task(_mark())
+    _PENDING_EMPTY_MARKS[key] = task
 
 
 def _provider_timeout(source_id: str) -> float:
@@ -185,9 +387,10 @@ async def fetch_all_providers_async(
     pending_tasks = []
     sem = asyncio.Semaphore(PROVIDER_CONCURRENCY_LIMIT)
     provider_stats: Dict[str, Dict[str, int]] = {}
+    provider_locks: defaultdict = defaultdict(lambda: asyncio.Semaphore(_PROVIDER_CONCURRENCY_PER_SOURCE))
 
     def _stat(source: str) -> Dict[str, int]:
-        return provider_stats.setdefault(source, {"fetched": 0, "deduped": 0, "final": 0})
+        return provider_stats.setdefault(source, {"fetched": 0, "deduped": 0, "final": 0, "failed": 0, "retries": 0, "timeouts": 0})
 
     async with httpx.AsyncClient(timeout=None) as client:
         for source_id in sources:
@@ -216,6 +419,8 @@ async def fetch_all_providers_async(
                     sem=sem,
                     timeout=timeout,
                     breaker_ttl=breaker_ttl,
+                    provider_lock=provider_locks[source_id],
+                    stats=_stat(source_id),
                 )
             )
 
@@ -246,6 +451,8 @@ async def _run_provider_task(
     sem: asyncio.Semaphore,
     timeout: float,
     breaker_ttl: Optional[float],
+    provider_lock: asyncio.Semaphore,
+    stats: Dict[str, int],
 ) -> Tuple[str, str, Optional[List[Dict]]]:
     start = time.perf_counter()
     success = False
@@ -253,35 +460,55 @@ async def _run_provider_task(
     count = 0
     error_text = ""
     async with sem:
-        try:
-            if hasattr(module, "read_sub_async"):
-                call = module.read_sub_async(client, query, item_year)
-            else:
-                call = asyncio.to_thread(module.read_sub, query, item_year)
-            result = await asyncio.wait_for(call, timeout=timeout)
-            success = True
-            count = len(result or [])
-            return source_id, cache_key, result
-        except asyncio.TimeoutError:
-            timeout_flag = True
-            error_text = "timeout"
-            nsub_module._remember_failure(source_id, cache_key, "timeout", ttl=breaker_ttl)
-            return source_id, cache_key, None
-        except Exception as exc:  # noqa: BLE001
-            error_text = str(exc)
-            nsub_module._remember_failure(source_id, cache_key, error_text, ttl=breaker_ttl)
-            return source_id, cache_key, None
-        finally:
-            duration_ms = (time.perf_counter() - start) * 1000
-            log.info(
-                "[metrics] provider=%s duration_ms=%.0f count=%s success=%s timeout=%s%s",
-                source_id,
-                duration_ms,
-                count,
-                success,
-                timeout_flag,
-                f" error={error_text}" if error_text else "",
-            )
+        result_payload: Optional[List[Dict]] = None
+        delay = 1.0
+        for attempt in range(_PROVIDER_RETRIES + 1):
+            try:
+                async with provider_lock:
+                    if hasattr(module, "read_sub_async"):
+                        call = module.read_sub_async(client, query, item_year)
+                    else:
+                        call = asyncio.to_thread(module.read_sub, query, item_year)
+                    result = await asyncio.wait_for(call, timeout=timeout)
+                success = True
+                count = len(result or [])
+                if attempt > 0:
+                    stats["retries"] += attempt
+                result_payload = result
+                break
+            except asyncio.TimeoutError:
+                timeout_flag = True
+                error_text = "timeout"
+                stats["timeouts"] += 1
+                if attempt < _PROVIDER_RETRIES:
+                    stats["retries"] += 1
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                nsub_module._remember_failure(source_id, cache_key, "timeout", ttl=breaker_ttl)
+                stats["failed"] += 1
+                break
+            except Exception as exc:  # noqa: BLE001
+                error_text = str(exc)
+                if attempt < _PROVIDER_RETRIES:
+                    stats["retries"] += 1
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                nsub_module._remember_failure(source_id, cache_key, error_text, ttl=breaker_ttl)
+                stats["failed"] += 1
+                break
+        duration_ms = (time.perf_counter() - start) * 1000
+        log.info(
+            "[metrics] provider=%s duration_ms=%.0f count=%s success=%s timeout=%s%s",
+            source_id,
+            duration_ms,
+            count,
+            success,
+            timeout_flag,
+            f" error={error_text}" if error_text else "",
+        )
+        return source_id, cache_key, result_payload
 def _filter_results_by_year(entries: List[Dict], target_year: str) -> List[Dict]:
     """Prefer entries that explicitly match the release year."""
     year = (target_year or "").strip()
@@ -324,19 +551,82 @@ async def search_subtitles_async(
     player: Optional[Dict[str, str]] = None,
 ) -> List[Dict]:
     player = player or {}
-    cache_key = _result_cache_key(media_type, raw_id, per_source, player)
+    base_cache_key = _result_cache_key(media_type, raw_id, per_source, player)
+    request_rid = REQUEST_ID.get("") or uuid.uuid4().hex
+    cache_guard_key = f"{base_cache_key}:{request_rid}"
+    resolved_ids: Dict[str, str] = {}
 
-    cached = RESULT_CACHE.get(cache_key)
+    cached = RESULT_CACHE.get(base_cache_key)
     if cached is not None:
         return cached
 
-    if EMPTY_CACHE.get(cache_key) is not None:
+    if EMPTY_CACHE.get(base_cache_key) is not None:
         return []
 
     item = build_scraper_item(media_type, raw_id)
+    needs_title = not item or not (item.get("title") or "").strip()
+    needs_year = not item or not (item.get("year") or "").strip()
+    if FALLBACK_META_ENABLED and (needs_title or needs_year):
+        fallback_title, fallback_year = _infer_title_year_from_player(player, raw_id)
+        if fallback_title:
+            if not item:
+                item = {
+                    "title": fallback_title,
+                    "year": fallback_year or "",
+                    "file_original_path": "",
+                    "mansearch": False,
+                    "mansearchstr": "",
+                    "tvshow": "",
+                    "season": "",
+                    "episode": "",
+                }
+            else:
+                if needs_title:
+                    item["title"] = fallback_title
+                if needs_year and fallback_year:
+                    item["year"] = fallback_year
+            if not fallback_year:
+                inferred_year = _extract_year_from_text(player.get("filename") or fallback_title)
+                if inferred_year:
+                    item["year"] = inferred_year
+                    log.info("[metadata] inferred year=%s from filename fallback", inferred_year)
+            lower_id = raw_id.lower()
+            if lower_id.startswith("tmdb:"):
+                token = _extract_provider_token(raw_id)
+                if token:
+                    resolved_ids["tmdb"] = token
+                resolved_title, resolved_year, resolved_imdb = _resolve_tmdb_metadata(raw_id)
+                if resolved_title or resolved_year:
+                    log.info(
+                        "[metadata] tmdb fallback resolved title='%s' year=%s",
+                        resolved_title or item.get("title"),
+                        resolved_year or item.get("year") or "unknown",
+                    )
+                if resolved_title:
+                    item["title"] = resolved_title
+                if resolved_year and not item.get("year"):
+                    item["year"] = resolved_year
+                if resolved_imdb:
+                    resolved_ids["imdb"] = resolved_imdb
+            elif lower_id.startswith("tvdb:"):
+                token = _extract_provider_token(raw_id)
+                if token:
+                    resolved_ids["tvdb"] = token
+                resolved_title, resolved_year, resolved_imdb = _resolve_tvdb_metadata(raw_id)
+                if resolved_title:
+                    item["title"] = resolved_title
+                if resolved_year and not item.get("year"):
+                    item["year"] = resolved_year
+                if resolved_imdb:
+                    resolved_ids["imdb"] = resolved_imdb
+            normalized_title = _normalize_query(item["title"])
+            item["title"] = normalized_title
+            log.warning("[metadata] fallback: inferred title='%s', year=%s", fallback_title, fallback_year or "unknown")
+            log.info("[metadata] normalized fallback title='%s' year=%s", item.get("title"), item.get("year") or "unknown")
     if not item:
-        EMPTY_CACHE.set(cache_key, True)
+        await _schedule_empty_mark(base_cache_key)
         return []
+    item["normalized_fragment"] = _normalize_fragment(item.get("title", ""))
 
     tokens_cache = None
     os_results_cache: Optional[List[Dict]] = None
@@ -357,13 +647,27 @@ async def search_subtitles_async(
             os_results_cache = None
             return None
         try:
+            base_id = tokens.base or ""
+            if base_id.lower().startswith("tt") and "imdb" not in resolved_ids:
+                resolved_ids["imdb"] = base_id
+            if "tmdb" not in resolved_ids and raw_id.lower().startswith("tmdb:"):
+                token = _extract_provider_token(raw_id)
+                if token:
+                    resolved_ids["tmdb"] = token
+            if "tvdb" not in resolved_ids and raw_id.lower().startswith("tvdb:"):
+                token = _extract_provider_token(raw_id)
+                if token:
+                    resolved_ids["tvdb"] = token
             os_results_cache = await asyncio.to_thread(
                 opensubtitles_source.search,
                 opensubtitles_source.SearchContext(
-                    imdb_id=tokens.base,
+                    imdb_id=resolved_ids.get("imdb"),
+                    tmdb_id=resolved_ids.get("tmdb"),
+                    tvdb_id=resolved_ids.get("tvdb"),
                     season=tokens.season,
                     episode=tokens.episode,
                     year=item.get("year"),
+                    query=item.get("title"),
                 ),
             )
         except Exception:
@@ -388,7 +692,7 @@ async def search_subtitles_async(
             provider_buckets.setdefault("opensubtitles", []).extend(os_results)
 
     if not results:
-        EMPTY_CACHE.set(cache_key, True)
+        await _schedule_empty_mark(base_cache_key)
         return []
 
     target_year = item.get("year", "")
@@ -450,9 +754,21 @@ async def search_subtitles_async(
     _log_provider_counts(provider_stats)
 
     if subtitles:
-        RESULT_CACHE.set(cache_key, subtitles)
+        _cancel_pending_empty_mark(base_cache_key)
+        EMPTY_CACHE.delete(base_cache_key)
+        existing = RESULT_CACHE.get(base_cache_key)
+        if existing and existing:
+            if _debug_cache_enabled():
+                log.info("[cache] skip overwriting non-empty cache for %s", base_cache_key)
+        else:
+            RESULT_CACHE.set(base_cache_key, subtitles)
     else:
-        EMPTY_CACHE.set(cache_key, True)
+        existing = RESULT_CACHE.get(base_cache_key)
+        if existing and existing:
+            if _debug_cache_enabled():
+                log.info("[cache] skip marking empty because cache already has data for %s", base_cache_key)
+        else:
+            await _schedule_empty_mark(base_cache_key)
 
     return subtitles
 
@@ -618,7 +934,7 @@ def _ensure_provider_presence(
 def _log_provider_counts(stats: Dict[str, Dict[str, int]]) -> None:
     if not _provider_debug_enabled():
         return
-    header = f"{'provider':12} {'fetched':>7} {'deduped':>7} {'dropped':>7} {'final':>7}"
+    header = f"{'provider':12} {'fetched':>7} {'deduped':>7} {'dropped':>7} {'final':>7} {'failed':>7} {'retries':>7} {'timeouts':>8}"
     lines = [header, "-" * len(header)]
     for provider in sorted(stats.keys()):
         data = stats.get(provider, {})
@@ -626,7 +942,10 @@ def _log_provider_counts(stats: Dict[str, Dict[str, int]]) -> None:
         deduped = data.get("deduped", 0)
         final = data.get("final", 0)
         dropped = max(0, deduped - final)
-        lines.append(f"{provider:12} {fetched:7d} {deduped:7d} {dropped:7d} {final:7d}")
+        failed = data.get("failed", 0)
+        retries = data.get("retries", 0)
+        timeouts = data.get("timeouts", 0)
+        lines.append(f"{provider:12} {fetched:7d} {deduped:7d} {dropped:7d} {final:7d} {failed:7d} {retries:7d} {timeouts:8d}")
     print("\n".join(lines))
 
 
@@ -1251,22 +1570,32 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
                 detail="UNACS subtitle blocked for this title; choose another source",
             )
 
-        if source_id == "opensubtitles":
-            file_id = payload.get("file_id") or sub_url
-            if not file_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="OpenSubtitles payload missing file identifier",
-                )
+        attempts = 0
+        data = None
+        while attempts < DOWNLOAD_RETRY_MAX:
             try:
-                data = opensubtitles_source.download(str(file_id), payload.get("file_name"))
-            except RuntimeError as exc:
-                log.warning("OpenSubtitles download failed", exc_info=exc)
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
-        else:
-            if not sub_url:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subtitle token")
-            data = get_sub(source_id, sub_url, None)
+                if source_id == "opensubtitles":
+                    file_id = payload.get("file_id") or sub_url
+                    if not file_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="OpenSubtitles payload missing file identifier",
+                        )
+                    data = opensubtitles_source.download(str(file_id), payload.get("file_name"))
+                else:
+                    if not sub_url:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subtitle token")
+                    data = get_sub(source_id, sub_url, None)
+                break
+            except HTTPException:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                attempts += 1
+                if attempts >= DOWNLOAD_RETRY_MAX:
+                    log.warning("download failed provider=%s attempts=%s", source_id, attempts, exc_info=exc)
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+                time.sleep(DOWNLOAD_RETRY_DELAY)
+                continue
 
         if not data or "data" not in data or "fname" not in data:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Source did not return a subtitle")
@@ -1629,7 +1958,9 @@ def _repair_srt(text: str) -> str:
 
 
 def _sanitize_srt_text(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = _normalize_subtitle_text(text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     # Optional full repair (timecode normalization + block rebuilding)
     try:
         do_repair = str(os.getenv("BG_SUBS_SRT_REPAIR", "")).lower() in {"1", "true", "yes"}
@@ -1677,6 +2008,8 @@ def _sanitize_srt_text(text: str) -> str:
         text = "\n".join(out)
         if not text.endswith("\n"):
             text += "\n"
+    if not text.endswith("\n"):
+        text += "\n"
     return text
 
 

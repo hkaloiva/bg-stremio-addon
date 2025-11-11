@@ -10,6 +10,7 @@ try:
   import urllib.request
 except:
   pass
+import httpx
 import requests
 
 s = requests.Session()
@@ -96,7 +97,7 @@ def _filter_results(results, query, year_hint):
   return results
 
 
-def read_sub (mov, year_hint=""):
+def read_sub(mov, year_hint="", normalized_fragment=None):
   list = []
   log_my(mov)
 
@@ -147,3 +148,26 @@ def get_sub(id, sub_url, filename):
   s['data'] = data
   s['fname'] = filename
   return s
+
+
+async def read_sub_async(client: httpx.AsyncClient, mov: str, year_hint: str = ""):
+  list = []
+  log_my(mov)
+  try:
+      enc_values = urllib.parse.urlencode({'q': mov})
+  except Exception:
+      enc_values = urllib.urlencode({'q': mov})  # type: ignore[attr-defined]
+  search_url = url_full + "search-subtitles?" + enc_values.replace('+', ' ')
+  try:
+      resp = await client.get(
+          search_url,
+          headers=headers,
+          timeout=min(REQUEST_TIMEOUT, max(1, REQUEST_TIMEOUT)),
+      )
+      resp.raise_for_status()
+  except httpx.HTTPError:
+      return None
+  data = resp.text
+  get_id_url_n(data, list)
+  list = _filter_results(list, mov, year_hint)
+  return list

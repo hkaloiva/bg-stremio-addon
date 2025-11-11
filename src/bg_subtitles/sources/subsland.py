@@ -165,7 +165,32 @@ def _filter_results(results, search_term, year_hint):
     return results
 
 
-def read_sub(search_term, year_hint=""):
+def _normalize_fragment(text: str) -> str:
+    try:
+        tokens = [tok for tok in re.split(r"[^a-z0-9]+", (text or "").lower()) if tok]
+        return " ".join(tokens)
+    except Exception:
+        return str(text or "").lower().strip()
+
+
+def _filter_by_fragment(results, fragment):
+    if not fragment:
+        return results
+    normalized_target = _normalize_fragment(fragment)
+    if not normalized_target:
+        return results
+    filtered = []
+    for entry in results:
+        candidate = str(entry.get("info") or "")
+        norm_candidate = _normalize_fragment(candidate)
+        if normalized_target and normalized_target not in norm_candidate:
+            log_my(f"[filter] dropped mismatched subtitle title={candidate} target={fragment}")
+            continue
+        filtered.append(entry)
+    return filtered
+
+
+def read_sub(search_term, year_hint="", normalized_fragment=None):
     """Search SubsLand for given movie or episode name."""
     results = []
     log_my(f"[SubsLand] Searching for: {search_term}")
@@ -183,6 +208,7 @@ def read_sub(search_term, year_hint=""):
 
     _parse_search_results(r.text, ep_code, results)
     results = _filter_results(results, search_term, year_hint)
+    results = _filter_by_fragment(results, normalized_fragment or search_term)
     clean_results = []
     for entry in results:
         entry = dict(entry)

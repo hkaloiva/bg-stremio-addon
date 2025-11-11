@@ -19,7 +19,10 @@ def test_extract_srt_passthrough():
 
 
 def test_extract_from_zip_prefers_srt():
-    payload = make_zip({"a.txt": "x", "b.srt": "line1\n"})
+    payload = make_zip({
+        "a.txt": "x",
+        "b.srt": "1\n00:00:01,000 --> 00:00:03,000\nline1\n\n",
+    })
     name, data = extract_subtitle(payload, "archive.zip")
     assert name.endswith(".srt")
     assert b"line1" in data
@@ -32,4 +35,3 @@ def test_extract_unsupported_raises():
         pass
     else:
         assert False, "expected SubtitleExtractionError"
-
