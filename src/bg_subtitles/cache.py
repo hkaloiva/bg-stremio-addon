@@ -7,10 +7,16 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 
 class TTLCache:
-    """Very small in-memory cache with TTL semantics."""
+    """Very small in-memory cache with TTL semantics.
 
-    def __init__(self, default_ttl: float = 600.0) -> None:
+    Optionally bounds the number of items via ``max_size``. When the cache
+    exceeds ``max_size`` on set(), the oldest (by expiry time) entries are
+    pruned to keep memory usage predictable.
+    """
+
+    def __init__(self, default_ttl: float = 600.0, max_size: int | None = None) -> None:
         self._default_ttl = default_ttl
+        self._max_size = max_size
         self._lock = threading.Lock()
         self._store: Dict[str, Tuple[float, Any]] = {}
 
@@ -32,10 +38,30 @@ class TTLCache:
         ttl_value = self._default_ttl if ttl is None else ttl
         with self._lock:
             self._store[key] = (self._now() + ttl_value, value)
+            # Optional pruning when over capacity
+            if self._max_size is not None and len(self._store) > self._max_size:
+                # Drop expired first
+                now = self._now()
+                expired_keys = [k for k, (exp, _v) in self._store.items() if exp < now]
+                for k in expired_keys:
+                    if len(self._store) <= self._max_size:
+                        break
+                    self._store.pop(k, None)
+                # If still above capacity, drop the farthest-out expiry first
+                if len(self._store) > self._max_size:
+                    # Sort by expiry ascending, remove oldest first
+                    by_expiry = sorted(self._store.items(), key=lambda kv: kv[1][0])
+                    to_remove = len(self._store) - self._max_size
+                    for i in range(to_remove):
+                        self._store.pop(by_expiry[i][0], None)
 
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
+
+    def delete(self, key: str) -> None:
+        with self._lock:
+            self._store.pop(key, None)
 
 
 # Async singleflight cache with 24-hour TTL
