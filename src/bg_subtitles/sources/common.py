@@ -130,19 +130,17 @@ search_re = [
 # --- Utility functions --------------------------------------------------------
 def get_search_string(item: Dict[str, Any]) -> str:
     """Build a normalized search string based on Kodi's original heuristics."""
-    search_string = item["title"]
+    original_title = item["title"]
+    search_string = original_title
     if item.get("mansearch"):
         return item.get("mansearchstr", search_string)
-
-    stripped = search_string.strip()
-    if stripped.isdigit():
-        # Treat pure numeric titles as movies (e.g., "1917", "300").
-        return stripped
 
     for name_clean in movie_name_re:
         search_string = re.sub(name_clean, "", search_string)
 
-    if not item.get("tvshow"):
+    has_alpha_original = bool(re.search(r"[A-Za-z]", original_title))
+
+    if not item.get("tvshow") and has_alpha_original:
         for tv_match in tv_show_list_re:
             m = re.match(tv_match, search_string, re.IGNORECASE)
             if not m:
@@ -187,7 +185,33 @@ def get_search_string(item: Dict[str, Any]) -> str:
     for find, repl in search_re:
         search_string = re.sub(find, repl, search_string)
 
+    leading_year = None
+    leading_match = re.match(r"^\s*(19\d\d|20\d\d)", original_title)
+    if leading_match:
+        trailing = original_title[leading_match.end():]
+        if re.search(r"[A-Za-z]", trailing):
+            leading_year = leading_match.group(1)
+    if leading_year and leading_year not in search_string:
+        rest = search_string.strip()
+        search_string = f"{leading_year} {rest}".strip()
+
+    normalized_final = search_string.strip()
+    if normalized_final and normalized_final.isdigit():
+        return normalized_final
+
     return search_string
+
+
+def _normalize_query(title: str) -> str:
+    item = {
+        "title": title,
+        "mansearch": False,
+        "mansearchstr": "",
+        "tvshow": "",
+        "season": "",
+        "episode": "",
+    }
+    return get_search_string(item)
 
 
 def get_info(it: Dict[str, Any]) -> str:
