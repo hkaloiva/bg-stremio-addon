@@ -27,12 +27,12 @@ def test_filter_results_by_year_prefers_matching_hints():
     entries = [
         {"id": "unacs", "info": "Eden (1963) 1080p"},
         {"id": "subs_sab", "info": "Eden 2024 1080p"},
-        {"id": "opensubtitles", "payload": {"file_name": "Eden.Part.Two.2024.srt"}},
+        {"id": "subsland", "payload": {"file_name": "Eden.Part.Two.2024.srt"}},
     ]
     filtered = _filter_results_by_year(entries, "2024")
     sources = {entry["id"] for entry in filtered}
     assert "subs_sab" in sources
-    assert "opensubtitles" in sources
+    assert "subsland" in sources
     assert "unacs" not in sources
 
 

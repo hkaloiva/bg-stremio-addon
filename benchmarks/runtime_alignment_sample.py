@@ -115,11 +115,16 @@ def run_sample() -> Dict:
         runtime_ms = _fetch_runtime_ms(media_type, identifier)
         t0 = time.perf_counter()
         subs = loop.run_until_complete(_fetch_subtitles(media_type, identifier))
-        cold_latencies.append((time.perf_counter() - t0) * 1000)
+        cold_elapsed = (time.perf_counter() - t0) * 1000
+        has_results = bool(subs)
+        if has_results:
+            cold_latencies.append(cold_elapsed)
         # Warm call to observe cache behavior
         t1 = time.perf_counter()
         loop.run_until_complete(_fetch_subtitles(media_type, identifier))
-        warm_latencies.append((time.perf_counter() - t1) * 1000)
+        warm_elapsed = (time.perf_counter() - t1) * 1000
+        if has_results:
+            warm_latencies.append(warm_elapsed)
         key = f"{media_type}:{identifier}"
         reports[key] = []
         for entry in subs:

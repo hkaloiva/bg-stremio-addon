@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [v0.2.9.1] - 2025-11-12
+
+### Changed
+- Provider registry now includes only UNACS, SubsSab, SubsLand, and Vlad00nMooo. All OpenSubtitles integration, env knobs, and fallbacks were removed from the service, docs, and benchmarks.
+- Runtime smoke tests (`benchmarks/runtime_alignment_sample.py`, TMDB/TVDB validation suites) were updated to track the slimmer provider set.
+- SAB placeholder cache now short-circuits retries earlier in `search_subtitles_async`, reducing wasted slots when banner-only archives are returned.
+
+### Removed
+- `src/bg_subtitles/sources/opensubtitles.py` and all associated unit tests, docs, and env references.
+
+[v0.2.9.1]: https://github.com/greenbluegreen/bg-stremio-addon/releases/tag/v0.2.9.1
+
 ## [v0.2.9-rc1] - 2025-11-12
 
 ### Added

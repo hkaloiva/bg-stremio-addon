@@ -24,7 +24,6 @@ from .cache import TTLCache
 from .extract import SubtitleExtractionError, extract_subtitle
 from .metadata import build_scraper_item, parse_stremio_id
 from .sources.nsub import get_sub
-from .sources import opensubtitles as opensubtitles_source
 from .sources import nsub as nsub_module
 from .sources.common import get_search_string, REQUEST_ID, _normalize_query
 from .year_filter import extract_year, is_year_match
@@ -99,7 +98,6 @@ PROVIDER_LABELS = {
     "subs_sab": "SAB",
     "subsland": "LAND",
     "Vlad00nMooo": "VLA",
-    "opensubtitles": "OpenSubtitles",
 }
 
 COLOR_TAG_RE = re.compile(r"\[/?COLOR[^\]]*\]", re.IGNORECASE)
@@ -668,52 +666,6 @@ async def search_subtitles_async(
     item.setdefault("runtime_ms", 0)
     item["normalized_fragment"] = _normalize_fragment(item.get("title", ""))
 
-    tokens_cache = None
-    os_results_cache: Optional[List[Dict]] = None
-
-    def _load_tokens():
-        nonlocal tokens_cache
-        if tokens_cache is None:
-            tokens_cache = parse_stremio_id(raw_id)
-        return tokens_cache
-
-    async def _load_os_results() -> Optional[List[Dict]]:
-        nonlocal os_results_cache
-        if os_results_cache is not None:
-            return os_results_cache
-        try:
-            tokens = _load_tokens()
-        except Exception:
-            os_results_cache = None
-            return None
-        try:
-            base_id = tokens.base or ""
-            if base_id.lower().startswith("tt") and "imdb" not in resolved_ids:
-                resolved_ids["imdb"] = base_id
-            if "tmdb" not in resolved_ids and raw_id.lower().startswith("tmdb:"):
-                token = _extract_provider_token(raw_id)
-                if token:
-                    resolved_ids["tmdb"] = token
-            if "tvdb" not in resolved_ids and raw_id.lower().startswith("tvdb:"):
-                token = _extract_provider_token(raw_id)
-                if token:
-                    resolved_ids["tvdb"] = token
-            os_results_cache = await asyncio.to_thread(
-                opensubtitles_source.search,
-                opensubtitles_source.SearchContext(
-                    imdb_id=resolved_ids.get("imdb"),
-                    tmdb_id=resolved_ids.get("tmdb"),
-                    tvdb_id=resolved_ids.get("tvdb"),
-                    season=tokens.season,
-                    episode=tokens.episode,
-                    year=item.get("year"),
-                    query=item.get("title"),
-                ),
-            )
-        except Exception:
-            os_results_cache = None
-        return os_results_cache
-
     deduped_results, provider_stats = await fetch_all_providers_async(item)
     results = deduped_results[:]  # copy list for ranking
     provider_buckets: Dict[str, List[Dict]] = {}
@@ -723,27 +675,10 @@ async def search_subtitles_async(
     results = [entry for entry in results if entry.get("id") != "yavka"]
 
     if not results:
-        os_results = await _load_os_results()
-        results = os_results or []
-        if os_results:
-            stats = provider_stats.setdefault("opensubtitles", {"fetched": 0, "deduped": 0, "final": 0})
-            stats["fetched"] += len(os_results)
-            stats["deduped"] += len(os_results)
-            provider_buckets.setdefault("opensubtitles", []).extend(os_results)
-
-    if not results:
         await _schedule_empty_mark(base_cache_key)
         return []
 
     target_year = item.get("year", "")
-    # Optionally enrich with OpenSubtitles even if legacy sources returned results
-    os_results = await _load_os_results()
-    if os_results:
-        results.extend(os_results)
-        stats = provider_stats.setdefault("opensubtitles", {"fetched": 0, "deduped": 0, "final": 0})
-        stats["fetched"] += len(os_results)
-        stats["deduped"] += len(os_results)
-        provider_buckets.setdefault("opensubtitles", []).extend(os_results)
 
     results = _filter_results_by_year(results, target_year)
     results = _select_best_per_source(
@@ -1147,7 +1082,7 @@ def _score_entry(entry: Dict, target_year: str, ctx: Dict, media_type: str) -> f
     # Optional: smart matching via guessit (dominant tie-breaker)
     if os.getenv("BG_SUBS_SMART_MATCH", "").lower() in {"1", "true", "yes"}:
         try:
-            # Use provider file_name when available (OpenSubtitles), else info text
+            # Use provider file_name when available, else info text
             guess_stream = ctx.get("guessit") or {}
             entry_name = _entry_display_name(entry)
             guess_entry = _guessit_parse(entry_name)
@@ -1623,11 +1558,7 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
 
         attempts = 0
         data = None
-        cache_key = None
-        if source_id == "opensubtitles":
-            cache_key = f"{source_id}:{payload.get('file_id') or sub_url}"
-        elif sub_url:
-            cache_key = f"{source_id}:{sub_url}"
+        cache_key = f"{source_id}:{sub_url}" if sub_url else None
         cached_download = DOWNLOAD_CACHE.get(cache_key) if cache_key else None
         if cached_download:
             data = dict(cached_download)
@@ -1636,18 +1567,9 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
             try:
                 if data is not None:
                     break
-                if source_id == "opensubtitles":
-                    file_id = payload.get("file_id") or sub_url
-                    if not file_id:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="OpenSubtitles payload missing file identifier",
-                        )
-                    data = opensubtitles_source.download(str(file_id), payload.get("file_name"))
-                else:
-                    if not sub_url:
-                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subtitle token")
-                    data = get_sub(source_id, sub_url, None)
+                if not sub_url:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subtitle token")
+                data = get_sub(source_id, sub_url, None)
                 break
             except HTTPException:
                 raise

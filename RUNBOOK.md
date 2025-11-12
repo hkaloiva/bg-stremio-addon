@@ -88,11 +88,7 @@ This switches the Koyeb service image to the specified tag and preserves env/por
   - Check logs for `Response built` entries and counts.
 - Koyeb build flakiness:
   - Prefer `make deploy-bp` (buildpack path) or retry docker deploy.
-- OpenSubtitles empties:
-  - Verify `OPENSUBTITLES_API_KEY` and network reachability.
-
 ## Contact
 
 - Code level issues: `src/app.py`, `src/bg_subtitles/service.py`
 - Provider scrapers: `src/bg_subtitles/sources/`
-

@@ -1,9 +1,9 @@
-# Bulgarian Subtitles Add‑on for Stremio ![version](https://img.shields.io/badge/version-0.2.9--rc1-blue)
+# Bulgarian Subtitles Add‑on for Stremio ![version](https://img.shields.io/badge/version-0.2.9.1-blue)
 
-A FastAPI add‑on that aggregates Bulgarian subtitles for Stremio using hardened scrapers and an OpenSubtitles fallback. It focuses on reliability, predictable responses, and safe delivery to Stremio players.
+A FastAPI add‑on that aggregates Bulgarian subtitles for Stremio using hardened scrapers. It focuses on reliability, predictable responses, and safe delivery to Stremio players.
 
 ## Features
-- Providers: UNACS, SubsSab, SubsLand (via worker/proxy), Vlad00nMooo; optional OpenSubtitles enrichment.
+- Providers: UNACS, SubsSab, SubsLand (via worker/proxy), Vlad00nMooo.
 - Formats: streams plain‑text subtitles; extracts from `.zip`, `.rar`, `.7z` when needed.
 - Encoding & safety: normalizes to UTF‑8 and applies robust SRT repair/sanitize (arrow/millisecond normalization, index renumber), avoiding client crashes on malformed SRTs.
 - Caching: in‑memory result caches (optional max size) + HTTP `ETag` and `Cache-Control` on downloads.
@@ -119,7 +119,7 @@ docker run --rm -p 8080:8080 bg-stremio-addon
 - Entrypoint: `src/app.py` (FastAPI, served by `uvicorn` on port `8080`).
 - Stream wrapper addon: `src/stream_wrapper_app.py` (FastAPI wrapper that proxies AIOStreams and enriches results via the detector service).
 - Core selection/orchestration: `src/bg_subtitles/service.py`.
-- Providers: `src/bg_subtitles/sources/` (`unacs.py`, `subs_sab.py`, `subsland.py`, `Vlad00nMooo.py`, `opensubtitles.py`).
+- Providers: `src/bg_subtitles/sources/` (`unacs.py`, `subs_sab.py`, `subsland.py`, `Vlad00nMooo.py`).
 - Utilities: `src/bg_subtitles/metadata.py`, `extract.py`, `cache.py`.
 - Tests: `tests/` (route-level checks, selection behavior). No new test frameworks; keep tests minimal and local to changed modules.
 - Operational guides: `AGENTS.md`, `RUNBOOK.md`, `scripts/*.sh`.
@@ -160,8 +160,6 @@ Conventions (enforced by AGENTS.md)
   - `BG_SUBS_STREMIO_ONLY=1` serve the Stremio manifest at `/manifest.json` (useful for staging URLs used by Stremio Web).
   - `BG_SUBS_STREMIO_ID` unique addon id (default: `bg.subtitles.stremio.staging` for staging). Use a different id than prod to avoid client cache collisions.
   - `BG_SUBS_STREMIO_VERSION` override manifest version to force client manifest refresh (e.g., `0.2.2-stg2`).
-- Provider credentials:
-  - `OPENSUBTITLES_API_KEY`, `OPENSUBTITLES_USER_AGENT` (required for OpenSubtitles).
 - Debugging:
   - `BG_SUBS_DEBUG_LOGS=1`, `BG_SUBS_DEBUG_LABELS=1`, `BG_SUBS_DEBUG_RANK=1` (logs rank reasons when smart matching is on).
   - `BG_SUBS_DEBUG_PROVIDER_COUNTS=1` prints a per-provider summary (`fetched/deduped/final`) for each search to help diagnose missing sources.
@@ -333,7 +331,6 @@ Run tests: `pytest -q` (or run only selection tests under `tests/test_selection_
 - SAB intermittent errors: connection refused/EOF; re-run or increase SAB pacing in env.
 - Buildpack errors: do not use buildpack; deploy via Docker builder or pinned image.
 - iOS players: keep `BG_SUBS_SRT_MIME=application/x-subrip` and `BG_SUBS_SRT_CRLF=1`.
-- OpenSubtitles missing: set `OPENSUBTITLES_API_KEY` and `OPENSUBTITLES_USER_AGENT`.
 
 ## Koyeb CLI (Reference)
 Do not deploy from here unless you intend to update staging/prod. Keep tokens in env; never commit them.
@@ -426,7 +423,7 @@ You are working in the bg-stremio-addon repo.
 - Keep API routes and response shapes exactly as implemented. Both /subtitles/... .json and plain routes must work.
 
 Context
-  Repo: Bulgarian Subtitles (FastAPI) — src/app.py (entry), src/bg_subtitles/service.py, sources/* (unacs, subs_sab, subsland, Vlad00nMooo, opensubtitles)
+  Repo: Bulgarian Subtitles (FastAPI) — src/app.py (entry), src/bg_subtitles/service.py, sources/* (unacs, subs_sab, subsland, Vlad00nMooo)
   Prod (Koyeb): coastal-flor/bg-stremio-addon → https://coastal-flor-c5722c.koyeb.app
   Staging (Koyeb): bg-subs-staging/bg-subs-stremio → https://bg-subs-staging-kaloyan8907-e2127367.koyeb.app
 
@@ -461,7 +458,6 @@ Pinned image promotion:
 Environment toggles (common):
   BG_SUBS_TOP_K, BG_SUBS_CAP_UNACS, BG_SUBS_SAFE_VARIANTS, BG_SUBS_DEFAULT_LIMIT,
   BG_SUBS_SMART_MATCH, BG_SUBS_STRICT_MODE, BG_SUBS_SRT_MIME, BG_SUBS_SRT_CRLF,
-  OPENSUBTITLES_API_KEY, OPENSUBTITLES_USER_AGENT,
   BG_SUBS_STREMIO_ONLY, BG_SUBS_STREMIO_ID, BG_SUBS_STREMIO_VERSION.
 
 Tasks you may perform:
@@ -540,23 +536,18 @@ Promote to production (pinned image):
 ```
 
 ## Configuration
-- OpenSubtitles
-  - `OPENSUBTITLES_API_KEY`: API key (override bundled/default if present)
-  - `OPENSUBTITLES_USER_AGENT`: e.g. `bg-stremio-addon 1.0`
 - Logging
   - `BG_SUBS_LOGLEVEL`: `INFO` (default) or `DEBUG` for verbose provider logs
   
 Required components and external services
 - Cinemeta metadata: the service reaches `https://v3-cinemeta.strem.io` (fallback `https://cinemeta-live.strem.io`) to resolve titles, years, and series context (SxxExx).
 - Provider sites: the scrapers contact UNACS, SubsSab, SubsLand, and Vlad00nMooo. Network access to these hosts is required.
-- Optional OpenSubtitles: if you provide `OPENSUBTITLES_API_KEY`, Bulgarian results from OpenSubtitles will enrich/backup legacy sources.
 - Runtime tools: the Docker image already includes `unrar` and `libarchive-tools` for archive extraction (`.rar`, `.7z`, `.zip`).
 
 ## How It Works
 1. Cinemeta metadata is fetched and normalized; series SxxExx context is derived when applicable.
 2. Providers are queried in parallel with short time budgets; results are deduplicated and scored (year match, basic heuristics).
-3. If nothing is found, OpenSubtitles is queried for Bulgarian entries. Results may also be enriched with OpenSubtitles.
-4. Each listed item carries a download token. On download, archives are extracted, text is converted to UTF‑8, and returned with caching headers.
+3. Each listed item carries a download token. On download, archives are extracted, text is converted to UTF‑8, and returned with caching headers.
 
 Client compatibility (Omni/Vidi)
 - Omni: uses `GET /subtitles/{type}/{id}.json` and expects an object `{ "subtitles": [...] }` — provided.
@@ -589,7 +580,6 @@ bg-stremio-addon/
 - `src/bg_subtitles/sources/subs_sab.py` — SubsSab
 - `src/bg_subtitles/sources/subsland.py` — SubsLand (may require a worker/proxy depending on rate limits)
 - `src/bg_subtitles/sources/Vlad00nMooo.py` — Vlad00n Mooo
-- `src/bg_subtitles/sources/opensubtitles.py` — OpenSubtitles integration (search+download)
 
 The aggregator `src/bg_subtitles/sources/nsub.py` rate-limits requests per provider and logs per-provider metrics.
 ```

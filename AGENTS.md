@@ -45,7 +45,6 @@ Environment variables commonly used:
 - `BG_SUBS_SINGLE_GROUP=1` (keep single Bulgarian group)
 - `BG_SUBS_LABEL_IN_LANG=0` (embed provider/fps in language when `1`)
 - `BG_SUBS_VIDI_MODE=1` (keeps Vidi-friendly fields)
-- `OPENSUBTITLES_API_KEY` and `OPENSUBTITLES_USER_AGENT`
 
 Testing guidance:
 
@@ -58,4 +57,3 @@ Coding style:
 
 - Favor explicit names, no one-letter variables, avoid inline comments unless clarifying a non-obvious decision.
 - Log with `logging` from existing module loggers; avoid printing except for structured router logs already present.
-

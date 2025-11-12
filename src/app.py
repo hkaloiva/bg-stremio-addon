@@ -204,7 +204,7 @@ async def request_id_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------
 MANIFEST = {
     "id": "bg.subtitles.stremio",
-    "version": "0.2.9-rc1",
+    "version": "0.2.9.1",
     "name": "Bulgarian Subtitles",
     "description": "Aggregates Bulgarian subtitles from popular sources",
     "catalogs": [],
@@ -466,7 +466,6 @@ async def _subtitles_response_plain(
         "subs_sab": "SAB",
         "subsland": "LAND",
         "Vlad00nMooo": "VLA",
-        "opensubtitles": "OpenSubtitles",
     }
 
     payload: List[Dict] = []
@@ -772,7 +771,6 @@ async def _subtitles_response_stremio(
         "subs_sab": "SAB",
         "subsland": "LAND",
         "Vlad00nMooo": "VLA",
-        "opensubtitles": "OpenSubtitles",
     }
     single_group = os.getenv("BG_SUBS_SINGLE_GROUP", "1").lower() in {"1", "true", "yes"}
     group_by_fps = os.getenv("BG_SUBS_GROUP_BY_FPS", "").lower() in {"1", "true", "yes"}
