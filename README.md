@@ -1,4 +1,4 @@
-# Bulgarian Subtitles Add‑on for Stremio ![version](https://img.shields.io/badge/version-0.2.5-blue)
+# Bulgarian Subtitles Add‑on for Stremio ![version](https://img.shields.io/badge/version-0.2.9--rc1-blue)
 
 A FastAPI add‑on that aggregates Bulgarian subtitles for Stremio using hardened scrapers and an OpenSubtitles fallback. It focuses on reliability, predictable responses, and safe delivery to Stremio players.
 
@@ -165,6 +165,7 @@ Conventions (enforced by AGENTS.md)
 - Debugging:
   - `BG_SUBS_DEBUG_LOGS=1`, `BG_SUBS_DEBUG_LABELS=1`, `BG_SUBS_DEBUG_RANK=1` (logs rank reasons when smart matching is on).
   - `BG_SUBS_DEBUG_PROVIDER_COUNTS=1` prints a per-provider summary (`fetched/deduped/final`) for each search to help diagnose missing sources.
+  - `BG_SUBS_DEBUG_CACHE=1` logs cache skip/deferred empty events for concurrent fetches.
 
 Recommended prod profile to surface 3 per provider on `.json`:
 ```bash

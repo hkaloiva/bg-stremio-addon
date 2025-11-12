@@ -27,6 +27,7 @@ from .sources.nsub import get_sub
 from .sources import opensubtitles as opensubtitles_source
 from .sources import nsub as nsub_module
 from .sources.common import get_search_string, REQUEST_ID, _normalize_query
+from .year_filter import extract_year, is_year_match
 
 log = logging.getLogger("bg_subtitles.service")
 
@@ -118,6 +119,10 @@ RESULT_CACHE = TTLCache(default_ttl=1800, max_size=_env_int("BG_SUBS_RESULT_CACH
 EMPTY_CACHE = TTLCache(default_ttl=300, max_size=_env_int("BG_SUBS_EMPTY_CACHE_MAX", None))
 RESOLVED_CACHE = TTLCache(default_ttl=300, max_size=_env_int("BG_SUBS_RESOLVED_CACHE_MAX", None))
 TVDB_TOKEN_CACHE = TTLCache(default_ttl=3600, max_size=1)
+PLACEHOLDER_CACHE = TTLCache(
+    default_ttl=float(os.getenv("BG_SUBS_PLACEHOLDER_TTL", "1800")),
+    max_size=_env_int("BG_SUBS_PLACEHOLDER_CACHE_MAX", 512),
+)
 
 # In-flight singleflight guard: only one resolution per token at a time
 _INFLIGHT_LOCK = threading.Lock()
@@ -136,6 +141,12 @@ FALLBACK_META_ENABLED = os.getenv("BG_SUBS_FALLBACK_META", "1").lower() in {"1",
 _PROVIDER_CONCURRENCY_PER_SOURCE = max(1, int(os.getenv("BG_SUBS_PROVIDER_CONCURRENCY", "2")))
 _PROVIDER_TIMEOUT = max(0.5, float(os.getenv("BG_SUBS_PROVIDER_TIMEOUT_MS", "3000")) / 1000.0)
 _PROVIDER_RETRIES = max(0, int(os.getenv("BG_SUBS_PROVIDER_RETRIES", "1")))
+DOWNLOAD_RETRY_MAX = max(1, int(os.getenv("BG_SUBS_DOWNLOAD_RETRIES", "3")))
+DOWNLOAD_RETRY_DELAY = max(0.0, float(os.getenv("BG_SUBS_DOWNLOAD_RETRY_DELAY", "0.3")))
+DOWNLOAD_CACHE = TTLCache(
+    default_ttl=float(os.getenv("BG_SUBS_DOWNLOAD_CACHE_TTL", "600")),
+    max_size=_env_int("BG_SUBS_DOWNLOAD_CACHE_MAX", 1024),
+)
 DOWNLOAD_RETRY_MAX = max(1, int(os.getenv("BG_SUBS_DOWNLOAD_RETRIES", "3")))
 DOWNLOAD_RETRY_DELAY = max(0.0, float(os.getenv("BG_SUBS_DOWNLOAD_RETRY_DELAY", "0.3")))
 
@@ -185,17 +196,9 @@ def _infer_title_year_from_player(player: Dict[str, str], raw_id: str) -> Tuple[
     except Exception:
         stem = candidate
     cleaned = stem.replace(".", " ").replace("_", " ").strip()
-    match = re.search(r"(19|20)\d{2}", cleaned)
-    year = match.group(0) if match else ""
+    year = extract_year(cleaned) or ""
     title = cleaned or raw_id
     return title, year
-
-
-def _extract_year_from_text(text: str) -> Optional[str]:
-    if not text:
-        return None
-    match = re.search(r"(19|20)\d{2}", text)
-    return match.group(0) if match else None
 
 
 def _extract_provider_token(raw_id: str) -> Optional[str]:
@@ -253,7 +256,7 @@ def _resolve_tmdb_metadata(raw_id: str) -> Tuple[Optional[str], Optional[str], O
             meta = payload.get("meta") or {}
             title = meta.get("name")
             release = meta.get("releaseInfo") or meta.get("released") or meta.get("year")
-            year = _extract_year_from_text(str(release or ""))
+            year = extract_year(str(release or ""))
             imdb_id = meta.get("imdb_id") or meta.get("imdbId")
             if title:
                 log.info("[metadata] tmdb id resolved to '%s' (%s)", title, year or "unknown")
@@ -283,7 +286,7 @@ def _resolve_tmdb_metadata(raw_id: str) -> Tuple[Optional[str], Optional[str], O
         if isinstance(release, str) and release:
             year = release[:4]
         if not year:
-            year = _extract_year_from_text(release)
+            year = extract_year(release)
         if title:
             log.info("[metadata] TMDB API fallback succeeded → \"%s\" (%s)", title, year or "unknown")
             return title, year, imdb_id
@@ -325,7 +328,7 @@ def _resolve_tvdb_metadata(raw_id: str) -> Tuple[Optional[str], Optional[str], O
         data = payload.get("data") or {}
         title = data.get("name")
         release = data.get("firstAired") or data.get("year")
-        year = _extract_year_from_text(str(release or ""))
+        year = extract_year(str(release or ""))
         imdb_id = data.get("imdbId")
         if title:
             log.info("[metadata] TVDB API fallback succeeded → \"%s\" (%s)", title, year or "unknown")
@@ -367,6 +370,28 @@ def _provider_breaker_ttl(source_id: str) -> Optional[float]:
     if source_id == "Vlad00nMooo":
         return VLAD_BREAKER_TTL
     return None
+
+
+def _placeholder_key(source_id: Optional[str], sub_url: Optional[str]) -> Optional[str]:
+    if not source_id or not sub_url:
+        return None
+    return f"{source_id}:{sub_url}"
+
+
+def _mark_placeholder(source_id: Optional[str], sub_url: Optional[str]) -> None:
+    if source_id != "subs_sab":
+        return
+    key = _placeholder_key(source_id, sub_url)
+    if not key:
+        return
+    PLACEHOLDER_CACHE.set(key, True)
+
+
+def _placeholder_blocked(source_id: Optional[str], sub_url: Optional[str]) -> bool:
+    key = _placeholder_key(source_id, sub_url)
+    if not key:
+        return False
+    return PLACEHOLDER_CACHE.get(key) is not None
 
 
 async def fetch_all_providers_async(
@@ -517,9 +542,22 @@ def _filter_results_by_year(entries: List[Dict], target_year: str) -> List[Dict]
 
     filtered: List[Dict] = []
     for entry in entries:
-        entry_year = str(entry.get("year") or "").strip()
-        info = str(entry.get("info") or "")
-        if entry_year == year or year in info:
+        entry_year = entry.get("year")
+        text_hints: List[str] = []
+        for key in ("info", "name", "label", "title", "filename"):
+            value = entry.get(key)
+            if value:
+                text_hints.append(str(value))
+        payload = entry.get("payload")
+        if isinstance(payload, dict):
+            payload_year = payload.get("year")
+            if payload_year and not entry_year:
+                entry_year = payload_year
+            for key in ("file_name", "info", "title"):
+                value = payload.get(key)
+                if value:
+                    text_hints.append(str(value))
+        if is_year_match(year, entry_year, text=text_hints):
             filtered.append(entry)
 
     return filtered or entries
@@ -573,6 +611,7 @@ async def search_subtitles_async(
                 item = {
                     "title": fallback_title,
                     "year": fallback_year or "",
+                    "runtime_ms": 0,
                     "file_original_path": "",
                     "mansearch": False,
                     "mansearchstr": "",
@@ -586,7 +625,7 @@ async def search_subtitles_async(
                 if needs_year and fallback_year:
                     item["year"] = fallback_year
             if not fallback_year:
-                inferred_year = _extract_year_from_text(player.get("filename") or fallback_title)
+                inferred_year = extract_year(player.get("filename") or fallback_title)
                 if inferred_year:
                     item["year"] = inferred_year
                     log.info("[metadata] inferred year=%s from filename fallback", inferred_year)
@@ -626,6 +665,7 @@ async def search_subtitles_async(
     if not item:
         await _schedule_empty_mark(base_cache_key)
         return []
+    item.setdefault("runtime_ms", 0)
     item["normalized_fragment"] = _normalize_fragment(item.get("title", ""))
 
     tokens_cache = None
@@ -717,6 +757,11 @@ async def search_subtitles_async(
 
     subtitles: List[Dict] = []
     for idx, entry in enumerate(results):
+        source_id = entry.get("id")
+        sub_url = entry.get("url")
+        if source_id == "subs_sab" and _placeholder_blocked(source_id, sub_url):
+            log.info("[skip] sab_placeholder_detected source=%s url=%s", source_id, sub_url)
+            continue
         payload: Dict[str, object] = {
             "source": entry.get("id"),
             "url": entry.get("url"),
@@ -726,6 +771,9 @@ async def search_subtitles_async(
             payload.update(extra_payload)
         if entry.get("fps"):
             payload["fps"] = entry.get("fps")
+        runtime_ms = (item or {}).get("runtime_ms")
+        if runtime_ms:
+            payload["runtime_ms"] = int(runtime_ms)
 
         token = _encode_payload(payload)
 
@@ -952,20 +1000,23 @@ def _log_provider_counts(stats: Dict[str, Dict[str, int]]) -> None:
 def _score_entry(entry: Dict, target_year: str, ctx: Dict, media_type: str) -> float:
     score = 0.0
     info = str(entry.get("info") or "")
-    entry_year = str(entry.get("year") or "").strip()
+    entry_year_raw = str(entry.get("year") or "").strip()
+    entry_year = entry_year_raw if entry_year_raw.isdigit() else extract_year(entry_year_raw)
+    target_year_clean = (target_year or "").strip()
 
     # Year matching
-    if target_year:
-        if entry_year == target_year:
+    if target_year_clean and target_year_clean.isdigit():
+        if entry_year == target_year_clean:
             score += W_YEAR_EXACT
-        elif entry_year.isdigit() and target_year.isdigit():
+        else:
             try:
-                dy = abs(int(entry_year) - int(target_year))
-                if dy == 1:
-                    score += W_YEAR_NEAR
+                if entry_year:
+                    dy = abs(int(entry_year) - int(target_year_clean))
+                    if dy == 1:
+                        score += W_YEAR_NEAR
             except Exception:
                 pass
-        if target_year in info:
+        if is_year_match(target_year_clean, text=info):
             score += W_YEAR_IN_INFO
 
     # FPS closeness
@@ -1572,8 +1623,19 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
 
         attempts = 0
         data = None
+        cache_key = None
+        if source_id == "opensubtitles":
+            cache_key = f"{source_id}:{payload.get('file_id') or sub_url}"
+        elif sub_url:
+            cache_key = f"{source_id}:{sub_url}"
+        cached_download = DOWNLOAD_CACHE.get(cache_key) if cache_key else None
+        if cached_download:
+            data = dict(cached_download)
+            attempts = DOWNLOAD_RETRY_MAX
         while attempts < DOWNLOAD_RETRY_MAX:
             try:
+                if data is not None:
+                    break
                 if source_id == "opensubtitles":
                     file_id = payload.get("file_id") or sub_url
                     if not file_id:
@@ -1592,6 +1654,14 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
             except Exception as exc:  # noqa: BLE001
                 attempts += 1
                 if attempts >= DOWNLOAD_RETRY_MAX:
+                    if cached_download:
+                        log.warning(
+                            "download failed provider=%s attempts=%s; serving cached payload",
+                            source_id,
+                            attempts,
+                        )
+                        data = dict(cached_download)
+                        break
                     log.warning("download failed provider=%s attempts=%s", source_id, attempts, exc_info=exc)
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
                 time.sleep(DOWNLOAD_RETRY_DELAY)
@@ -1649,11 +1719,59 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
         if fmt in {"srt", "txt"}:
             try:
                 text = utf8_bytes.decode("utf-8", errors="replace")
-                text = _sanitize_srt_text(text)
-                utf8_bytes = text.encode("utf-8")
-                encoding = "utf-8"
             except Exception:
-                pass
+                text = ""
+            text = _sanitize_srt_text(text)
+            if fmt == "srt":
+                cues = _parse_srt_cues(text)
+                if not cues:
+                    _mark_placeholder(source_id, payload.get("url"))
+                    log.info("[filter] dropped_placeholder provider=%s reason=no_timecodes name=%s", source_id, name)
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Subtitle missing timecodes",
+                    )
+                runtime_ms = 0
+                try:
+                    runtime_ms = int(payload.get("runtime_ms") or 0)
+                except Exception:
+                    runtime_ms = 0
+                if runtime_ms >= 60000:
+                    span = max(1, cues[-1][1] - cues[0][0])
+                    ratio = span / runtime_ms
+                    drift = abs(1.0 - ratio)
+                    if drift > 0.15:
+                        if source_id == "subs_sab":
+                            _mark_placeholder(source_id, payload.get("url"))
+                        log.info(
+                            "[filter] dropped_desynced provider=%s ratio=%.3f runtime_ms=%s span_ms=%s",
+                            source_id,
+                            ratio,
+                            runtime_ms,
+                            span,
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Subtitle timing mismatch",
+                        )
+                    if 0.02 <= drift:
+                        scale = runtime_ms / span
+                        text = _scale_srt_timecodes(text, scale)
+                        log.info(
+                            "[adjust] runtime_ratio=%.3f scale=%.3f provider=%s name=%s",
+                            ratio,
+                            scale,
+                            source_id,
+                            name,
+                        )
+            if fmt == "srt" and not _looks_like_srt_text(text):
+                log.warning("[sanitize] dropped invalid SRT provider=%s", source_id)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Invalid SRT content",
+                )
+            utf8_bytes = text.encode("utf-8")
+            encoding = "utf-8"
 
         safe_name = _sanitize_filename(name, fmt)
         result = {
@@ -1662,6 +1780,8 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
             "encoding": encoding or "utf-8",
             "format": fmt,
         }
+        if cache_key and not cached_download:
+            DOWNLOAD_CACHE.set(cache_key, {"data": data.get("data"), "fname": data.get("fname")})
         RESOLVED_CACHE.set(token, result)
         return result
     finally:
@@ -2006,11 +2126,56 @@ def _sanitize_srt_text(text: str) -> str:
                 out.append(line)
                 i += 1
         text = "\n".join(out)
-        if not text.endswith("\n"):
-            text += "\n"
+
     if not text.endswith("\n"):
         text += "\n"
     return text
+
+
+_SRT_TIME_PATTERN = re.compile(
+    r"(?P<start>\d{1,3}:\d{2}:\d{2},\d{3})\s*-->\s*(?P<end>\d{1,3}:\d{2}:\d{2},\d{3})"
+)
+
+
+def _timecode_to_ms(ts: str) -> int:
+    hh, mm, rest = ts.split(":", 2)
+    ss, ms = rest.split(",", 1)
+    return ((int(hh) * 60 + int(mm)) * 60 + int(ss)) * 1000 + int(ms)
+
+
+def _ms_to_timecode(ms: int) -> str:
+    if ms < 0:
+        ms = 0
+    hours = ms // 3600000
+    rem = ms % 3600000
+    minutes = rem // 60000
+    rem %= 60000
+    seconds = rem // 1000
+    millis = rem % 1000
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
+
+
+def _parse_srt_cues(text: str) -> List[Tuple[int, int]]:
+    cues: List[Tuple[int, int]] = []
+    for match in _SRT_TIME_PATTERN.finditer(text):
+        start_ms = _timecode_to_ms(match.group("start"))
+        end_ms = _timecode_to_ms(match.group("end"))
+        cues.append((start_ms, end_ms))
+    return cues
+
+
+def _scale_srt_timecodes(text: str, scale: float) -> str:
+    if scale <= 0:
+        return text
+
+    def _replace(match: re.Match) -> str:
+        start_ms = _timecode_to_ms(match.group("start"))
+        end_ms = _timecode_to_ms(match.group("end"))
+        new_start = int(start_ms * scale)
+        new_end = int(end_ms * scale)
+        return f"{_ms_to_timecode(new_start)} --> {_ms_to_timecode(new_end)}"
+
+    return _SRT_TIME_PATTERN.sub(_replace, text)
 
 
 def _looks_textual_sub(data: bytes) -> bool:
@@ -2144,3 +2309,14 @@ def _build_display_name(entry: Dict, source: Optional[str]) -> str:
     label = _provider_label(source)
     info = _summarize(str(entry.get("info") or ""))
     return f"[{label}] {info}" if info else f"[{label}] Bulgarian subtitles"
+def _looks_like_srt_text(text: str) -> bool:
+    if "-->" not in text:
+        return False
+    lines = text.split("\n")
+    for idx in range(len(lines) - 1):
+        line = lines[idx]
+        if "-->" in line:
+            return True
+        if line.strip().isdigit() and "-->" in lines[idx + 1]:
+            return True
+    return False

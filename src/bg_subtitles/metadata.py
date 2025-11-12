@@ -86,6 +86,24 @@ def extract_episode(meta: dict, season: Optional[str], episode: Optional[str]) -
     return None, release
 
 
+def _normalize_runtime_minutes(raw: Optional[str]) -> int:
+    if raw is None:
+        return 0
+    if isinstance(raw, (int, float)):
+        return int(raw) if raw else 0
+    try:
+        text = str(raw).strip()
+    except Exception:
+        return 0
+    if not text:
+        return 0
+    match = re.search(r"(\d+)", text)
+    if not match:
+        return 0
+    minutes = int(match.group(1))
+    return minutes if minutes > 0 else 0
+
+
 def build_scraper_item(media_type: str, raw_id: str) -> Optional[dict]:
     tokens = parse_stremio_id(raw_id)
     meta = fetch_cinemeta_meta(media_type, tokens.base)
@@ -95,9 +113,11 @@ def build_scraper_item(media_type: str, raw_id: str) -> Optional[dict]:
     episode, release = extract_episode(meta, tokens.season, tokens.episode)
     year = normalize_year(release)
 
+    runtime_minutes = _normalize_runtime_minutes(meta.get("runtime"))
     item = {
         "title": meta.get("name", ""),
         "year": year,
+        "runtime_ms": runtime_minutes * 60000,
         "file_original_path": "",
         "mansearch": False,
         "mansearchstr": "",
@@ -115,6 +135,11 @@ def build_scraper_item(media_type: str, raw_id: str) -> Optional[dict]:
             episode_year = normalize_year(episode.get("releaseInfo") or episode.get("released") or episode.get("year"))
             if episode_year:
                 item["year"] = episode_year
+            episode_runtime = _normalize_runtime_minutes(
+                episode.get("runtime") or episode.get("duration") or episode.get("length")
+            )
+            if episode_runtime:
+                item["runtime_ms"] = episode_runtime * 60000
             if episode.get("overview"):
                 item["mansearchstr"] = episode["overview"]
         elif tokens.season and tokens.episode:
