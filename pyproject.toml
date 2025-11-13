@@ -24,3 +24,8 @@ where = ["src"]
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+markers = [
+    "matching: marks matching-related smoke tests"
+]

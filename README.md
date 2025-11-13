@@ -105,6 +105,7 @@ curl -sS http://127.0.0.1:7080/healthz
 curl -sS "http://127.0.0.1:7080/subtitles/movie/tt0133093.json" | jq '.subtitles | length'
 # Download one result (replace <token>)
 curl -sS "http://127.0.0.1:7080/subtitle/<token>.srt" -I
+PYTHONPATH=src pytest -m matching -v
 ```
 
 ## Docker

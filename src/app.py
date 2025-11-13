@@ -20,6 +20,8 @@ from bg_subtitles.service import (
     DEFAULT_FORMAT,
     LANG_ISO639_2,
     LANGUAGE,
+    _extract_player_hash,
+    _extract_player_runtime,
     resolve_subtitle,
     search_subtitles,
     search_subtitles_async,
@@ -832,7 +834,10 @@ async def stremio_subtitles(media_type: str, item_id: str, request: Request, lim
 # Subtitle download
 # ---------------------------------------------------------------------
 def _subtitle_download(request: Request, token: str) -> Response:
-    resolved = resolve_subtitle(token)
+    query_params = dict(request.query_params)
+    file_hash = _extract_player_hash(query_params)
+    file_runtime = _extract_player_runtime(query_params)
+    resolved = resolve_subtitle(token, file_hash=file_hash, file_runtime=file_runtime)
     filename = resolved.get("filename") or "subtitle.srt"
     encoding = resolved.get("encoding", "utf-8")
     fmt = resolved.get("format") or DEFAULT_FORMAT

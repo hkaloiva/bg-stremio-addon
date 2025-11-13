@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import binascii
+import sqlite3
 from pathlib import Path
 import os
 import time
@@ -22,6 +23,7 @@ from fastapi import status
 
 from .cache import TTLCache
 from .extract import SubtitleExtractionError, extract_subtitle
+from .matching import SubtitleCandidate, SubtitleMatch
 from .metadata import build_scraper_item, parse_stremio_id
 from .sources.nsub import get_sub
 from .sources import nsub as nsub_module
@@ -122,6 +124,166 @@ PLACEHOLDER_CACHE = TTLCache(
     max_size=_env_int("BG_SUBS_PLACEHOLDER_CACHE_MAX", 512),
 )
 
+# Match cache configuration (SQLite) for hash-mode ranking.
+MATCH_CACHE_PATH = Path("cache/match_cache.db")
+_MATCH_CACHE_TABLE = """
+CREATE TABLE IF NOT EXISTS match_cache (
+    provider TEXT NOT NULL,
+    url TEXT NOT NULL,
+    hash_prefix TEXT,
+    hash_full TEXT,
+    runtime REAL,
+    lang TEXT,
+    cues TEXT,
+    score REAL,
+    last_seen REAL,
+    PRIMARY KEY(provider, url)
+)
+"""
+MATCH_HASH_PREFIX_LEN = int(os.getenv("BG_SUBS_MATCH_HASH_PREFIX_LEN", "12"))
+
+def _hash_mode_enabled() -> bool:
+    return os.getenv("BG_SUBS_HASH_MODE", "").lower() in {"1", "true", "yes"}
+
+def _extract_player_hash(player: Optional[Dict[str, str]]) -> str | None:
+    if not player:
+        return None
+    for key in ("videoHash", "fileHash"):
+        value = player.get(key)
+        if value:
+            return str(value).strip()
+    return None
+
+def _extract_player_runtime(player: Optional[Dict[str, str]]) -> float | None:
+    if not player:
+        return None
+    duration_sec = _parse_positive_float(player.get("videoDurationSec"))
+    if duration_sec is not None and duration_sec > 0:
+        return duration_sec
+    duration = _parse_positive_float(player.get("videoDuration"))
+    if duration is not None and duration > 0:
+        if duration > 10000:
+            return duration / 1000.0
+        return duration
+    return None
+
+def _parse_positive_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except ValueError:
+        return None
+    return result if result > 0 else None
+
+def _match_cache_connection() -> sqlite3.Connection:
+    env_path = os.getenv("BG_SUBS_MATCH_CACHE")
+    path = Path(env_path) if env_path else MATCH_CACHE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), timeout=5.0)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA foreign_keys=OFF")
+    _ensure_match_cache_table(conn)
+    return conn
+
+def _ensure_match_cache_table(conn: sqlite3.Connection) -> None:
+    conn.execute(_MATCH_CACHE_TABLE)
+
+def _hash_prefix_from_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value[:MATCH_HASH_PREFIX_LEN]
+
+def _serialize_cues(cues: List[Tuple[int, int]]) -> str:
+    return json.dumps([[int(start), int(end)] for start, end in cues])
+
+def _deserialize_cues(raw: str | None) -> List[Tuple[int, int]]:
+    if not raw:
+        return []
+    try:
+        rows = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    result: List[Tuple[int, int]] = []
+    for item in rows:
+        if isinstance(item, list) and len(item) == 2:
+            try:
+                result.append((int(item[0]), int(item[1])))
+            except Exception:
+                continue
+    return result
+
+def _store_match_cache_entry(
+    provider: str,
+    url: str,
+    hash_full: str,
+    runtime: float | None,
+    lang: str,
+    cues: List[Tuple[int, int]],
+    score: float,
+) -> None:
+    if not hash_full:
+        return
+    prefix = _hash_prefix_from_value(hash_full)
+    with _match_cache_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO match_cache(provider, url, hash_prefix, hash_full, runtime, lang, cues, score, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(provider, url) DO UPDATE SET
+                hash_prefix=excluded.hash_prefix,
+                hash_full=excluded.hash_full,
+                runtime=excluded.runtime,
+                lang=excluded.lang,
+                cues=excluded.cues,
+                score=excluded.score,
+                last_seen=excluded.last_seen
+            """,
+            (
+                provider,
+                url,
+                prefix,
+                hash_full,
+                runtime,
+                lang,
+                _serialize_cues(cues),
+                score,
+                time.time(),
+            ),
+        )
+
+def _fetch_cached_matches(hash_full: str) -> List[Dict]:
+    prefix = _hash_prefix_from_value(hash_full)
+    if not prefix:
+        return []
+    with _match_cache_connection() as conn:
+        rows = conn.execute(
+            "SELECT provider, url, hash_full, runtime, lang, cues, score FROM match_cache WHERE hash_prefix = ?",
+            (prefix,),
+        ).fetchall()
+    matches: List[Dict] = []
+    for provider, url, hash_val, runtime, lang, cues_raw, score in rows:
+        if not hash_val or hash_val != hash_full:
+            continue
+        matches.append(
+            {
+                "provider": provider,
+                "url": url,
+                "hash_full": hash_val,
+                "runtime": float(runtime or 0.0),
+                "lang": lang or LANGUAGE,
+                "cues": _deserialize_cues(cues_raw),
+                "score": float(score or 0.0),
+            }
+        )
+    return matches
+
+
+def _score_candidate_with_probe(probe: Dict[str, float], candidate: SubtitleCandidate) -> float:
+    if not probe or not probe.get("sha1"):
+        return 0.0
+    return SubtitleMatch(probe, [candidate]).score_sub(candidate)
 # In-flight singleflight guard: only one resolution per token at a time
 _INFLIGHT_LOCK = threading.Lock()
 _INFLIGHT_EVENTS: dict[str, threading.Event] = {}
@@ -561,6 +723,76 @@ def _filter_results_by_year(entries: List[Dict], target_year: str) -> List[Dict]
     return filtered or entries
 
 
+def _rank_entries_by_hash_mode(entries: List[Dict], player: Optional[Dict[str, str]]) -> List[Dict]:
+    if not _hash_mode_enabled():
+        return entries
+    file_hash = _extract_player_hash(player)
+    if not file_hash:
+        return entries
+    probe: Dict[str, float] = {"sha1": file_hash}
+    runtime = _extract_player_runtime(player)
+    if runtime:
+        probe["runtime"] = runtime
+    matches = _fetch_cached_matches(file_hash)
+    if not matches:
+        return entries
+
+    match_map = {(m["provider"], m["url"]): m for m in matches}
+    matched_tokens: Set[str] = set()
+    entry_by_candidate: Dict[int, Dict] = {}
+    candidates: List[SubtitleCandidate] = []
+
+    for entry in entries:
+        token = entry.get("token")
+        if not token:
+            continue
+        try:
+            payload = _decode_payload(token)
+        except HTTPException:
+            continue
+        provider = payload.get("source")
+        url = payload.get("url")
+        if not provider or not url:
+            continue
+        row = match_map.get((provider, url))
+        if not row:
+            continue
+        candidate = SubtitleCandidate(
+            provider=provider,
+            url=url,
+            sha1=row["hash_full"],
+            runtime=row["runtime"],
+            cues=row["cues"],
+            lang=row["lang"],
+        )
+        candidates.append(candidate)
+        entry_by_candidate[id(candidate)] = entry
+        matched_tokens.add(token)
+
+    if not candidates:
+        return entries
+
+    matcher = SubtitleMatch(probe, candidates)
+    ranked = matcher.best(top_k=len(candidates))
+    sorted_entries: List[Dict] = []
+    for candidate in ranked:
+        mapped = entry_by_candidate.get(id(candidate))
+        if mapped:
+            sorted_entries.append(mapped)
+
+    remaining = [entry for entry in entries if entry.get("token") not in matched_tokens]
+
+    best_candidate = ranked[0] if ranked else None
+    if best_candidate:
+        log.info(
+            "[match][score] hash_mode best %s/%s score=%.3f",
+            best_candidate.provider,
+            best_candidate.url,
+            best_candidate.score,
+        )
+    return sorted_entries + remaining
+
+
 def _encode_payload(payload: Dict) -> str:
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("utf-8").strip("=")
@@ -704,6 +936,9 @@ async def search_subtitles_async(
         extra_payload = entry.get("payload")
         if isinstance(extra_payload, dict):
             payload.update(extra_payload)
+        lang_entry = entry.get("language") or entry.get("lang")
+        if lang_entry:
+            payload["language"] = lang_entry
         if entry.get("fps"):
             payload["fps"] = entry.get("fps")
         runtime_ms = (item or {}).get("runtime_ms")
@@ -730,6 +965,7 @@ async def search_subtitles_async(
 
     # Optional pre-download probe: try to resolve a small number of risky sources
     subtitles = _maybe_preprobe_filter(subtitles)
+    subtitles = _rank_entries_by_hash_mode(subtitles, player)
     for entry in subtitles:
         src_id = entry.get("source") or "unknown"
         provider_stats.setdefault(src_id, {"fetched": 0, "deduped": 0, "final": 0})
@@ -1507,7 +1743,7 @@ def _soft_match_score(video: Dict[str, str], sub: Dict[str, str]) -> Tuple[float
     return score, reasons
 
 
-def resolve_subtitle(token: str) -> Dict[str, bytes]:
+def resolve_subtitle(token: str, file_hash: str | None = None, file_runtime: float | None = None) -> Dict[str, bytes]:
     cached = RESOLVED_CACHE.get(token)
     if cached is not None:
         return cached
@@ -1638,6 +1874,8 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
                 except Exception:
                     pass
 
+        cues: List[Tuple[int, int]] = []
+        runtime_ms = 0
         if fmt in {"srt", "txt"}:
             try:
                 text = utf8_bytes.decode("utf-8", errors="replace")
@@ -1653,7 +1891,6 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
                         status_code=status.HTTP_502_BAD_GATEWAY,
                         detail="Subtitle missing timecodes",
                     )
-                runtime_ms = 0
                 try:
                     runtime_ms = int(payload.get("runtime_ms") or 0)
                 except Exception:
@@ -1702,6 +1939,35 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
             "encoding": encoding or "utf-8",
             "format": fmt,
         }
+        if file_hash and sub_url:
+            lang_value = str(payload.get("language") or payload.get("lang") or LANGUAGE)
+            match_runtime = float(file_runtime) if file_runtime is not None else None
+            if match_runtime is None and runtime_ms:
+                match_runtime = runtime_ms / 1000.0
+            if match_runtime is None:
+                match_runtime = _cues_runtime_seconds(cues)
+            match_runtime = match_runtime or 0.0
+            candidate = SubtitleCandidate(
+                provider=source_id,
+                url=sub_url,
+                sha1=file_hash,
+                runtime=match_runtime,
+                cues=cues,
+                lang=lang_value,
+            )
+            score = _score_candidate_with_probe(
+                {"sha1": file_hash, "runtime": match_runtime},
+                candidate,
+            )
+            _store_match_cache_entry(
+                provider=source_id,
+                url=sub_url,
+                hash_full=file_hash,
+                runtime=match_runtime,
+                lang=lang_value,
+                cues=cues,
+                score=score,
+            )
         if cache_key and not cached_download:
             DOWNLOAD_CACHE.set(cache_key, {"data": data.get("data"), "fname": data.get("fname")})
         RESOLVED_CACHE.set(token, result)
@@ -2084,6 +2350,13 @@ def _parse_srt_cues(text: str) -> List[Tuple[int, int]]:
         end_ms = _timecode_to_ms(match.group("end"))
         cues.append((start_ms, end_ms))
     return cues
+
+
+def _cues_runtime_seconds(cues: List[Tuple[int, int]]) -> float:
+    if not cues:
+        return 0.0
+    span = max(0, cues[-1][1] - cues[0][0])
+    return span / 1000.0
 
 
 def _scale_srt_timecodes(text: str, scale: float) -> str:
