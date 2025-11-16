@@ -52,7 +52,9 @@ meta_cache = {}
 def open_cache():
     global meta_cache
     for language in LANGUAGES:
-        meta_cache[language] = Cache(f"./cache/{language}/meta/tmp",  timedelta(hours=12).total_seconds())
+        cache_dir = Path(f"./cache/{language}/meta/tmp")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        meta_cache[language] = Cache(cache_dir, timedelta(hours=12).total_seconds())
 
 def close_cache():
     global meta_cache
