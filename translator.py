@@ -1,4 +1,5 @@
 from cache import Cache
+from pathlib import Path
 import api.tmdb as tmdb
 import urllib.parse
 import asyncio
@@ -18,8 +19,16 @@ with open("languages/lang_episode.json", "r", encoding="utf-8") as f:
 translations_cache = {}
 def open_cache():
     global translations_cache
-    for language in LANGUAGES:
-        translations_cache[language] = Cache(f"./cache/{language}/translation/tmp")
+    # Lazy init to avoid too many open files during dev
+    return
+
+def _get_translation_cache(language: str):
+    global translations_cache
+    if language not in translations_cache:
+        cache_dir = Path(f"./cache/{language}/translation/tmp")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        translations_cache[language] = Cache(cache_dir)
+    return translations_cache[language]
 
 def close_cache():
     global translations_cache
@@ -29,8 +38,8 @@ def close_cache():
 def get_cache_lenght():
     global translations_cache
     total_len = 0
-    for language in LANGUAGES:
-        total_len += translations_cache[language].get_len()
+    for cache in translations_cache.values():
+        total_len += cache.get_len()
     return total_len
 
 # Poster ratings
@@ -41,13 +50,15 @@ RATINGS_SERVER = os.getenv('TR_SERVER', 'https://ca6771aaa821-toast-ratings.baby
 async def translate_with_api(client: httpx.AsyncClient, text: str, language: str, source='en') -> str:
 
     translation = translations_cache[language].get(text)
+    cache_handle = _get_translation_cache(language)
+    translation = cache_handle.get(text)
     target = language.split('-')[0]
     if translation == None and text != None and text != '':
         api_url = f"https://lingva-translate-azure.vercel.app/api/v1/{source}/{target}/{urllib.parse.quote(text)}"
 
         response = await client.get(api_url)
         translated_text = response.json().get('translation', '')
-        translations_cache[language].set(text, translated_text)
+        cache_handle.set(text, translated_text)
     else:
         translated_text = translation
 

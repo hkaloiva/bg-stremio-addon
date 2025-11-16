@@ -50,12 +50,17 @@ with open("languages/languages.json", "r", encoding="utf-8") as f:
 
 # Cache set
 meta_cache = {}
-def open_cache():
+def _get_meta_cache(language: str):
     global meta_cache
-    for language in LANGUAGES:
+    if language not in meta_cache:
         cache_dir = Path(f"./cache/{language}/meta/tmp")
         cache_dir.mkdir(parents=True, exist_ok=True)
         meta_cache[language] = Cache(cache_dir, timedelta(hours=12).total_seconds())
+    return meta_cache[language]
+
+def open_cache():
+    # Lazy: initialize on first use to avoid many open handles in dev
+    return
 
 def close_cache():
     global meta_cache
@@ -65,8 +70,8 @@ def close_cache():
 def get_cache_lenght():
     global meta_cache
     total_len = 0
-    for language in LANGUAGES:
-        total_len += meta_cache[language].get_len()
+    for cache in meta_cache.values():
+        total_len += cache.get_len()
     return total_len
 
 # Cache
@@ -345,7 +350,8 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
 
         # Get from cache
-        meta = meta_cache[language].get(id)
+        meta_cache_handle = _get_meta_cache(language)
+        meta = meta_cache_handle.get(id)
 
         # Return cached meta
         if meta != None:
@@ -533,7 +539,7 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
 
 
             meta['meta']['id'] = id
-            meta_cache[language].set(id, meta)
+            meta_cache_handle.set(id, meta)
             return JSONResponse(content=meta, headers=cloudflare_cache_headers)
 
 
