@@ -5,4 +5,4 @@
 - Docker: greenbluegreen/toast-translator:combo-0.2.8c
 - Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
 - Env: same as current deployment (see .env.sample)
-
+- Normalize addon URLs to accept manifest URLs that already end with `/manifest.json` (e.g., stremthru bundler)
