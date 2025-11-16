@@ -47,6 +47,7 @@ If you don't want to log in, you can use the [Link Generator](https://0f693ad7dc
 Special thanks to the following repositories which were used to map anime IDs:  
 - [Fribb / anime-lists](https://github.com/Fribb/anime-lists)  
 - [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs)
+- Original addon created by [@diogomiguel93](https://github.com/diogomiguel93)
 
 ## Version Mapping (Source of Truth)
 - Git tag → Docker tag → Koyeb host → BG version
