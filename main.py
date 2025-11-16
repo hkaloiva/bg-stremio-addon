@@ -21,6 +21,7 @@ import zipfile
 import shutil
 import sys
 import urllib.parse
+from pathlib import Path
 
 # Ensure bundled bg_subtitles is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
