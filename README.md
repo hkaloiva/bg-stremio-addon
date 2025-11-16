@@ -1,4 +1,4 @@
-# A Stremio Catalog Translator ✨
+# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles)
 
 ---
 
