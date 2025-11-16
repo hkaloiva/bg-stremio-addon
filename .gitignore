@@ -5,3 +5,8 @@ backup.txt
 cache/
 test/
 cache.zip
+.venv/
+*.log
+bg_subs_*.log
+*.DS_Store
+node_modules/

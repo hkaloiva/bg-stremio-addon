@@ -13,6 +13,7 @@
 - 🍣 [Anime Kitsu](https://anime-kitsu.strem.fun/manifest.json)
 - 🍜 [Anime Catalogs](https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/configure)
 - 🦸‍♂️ [Marvel Catalogs](https://addon-marvel.onrender.com/manifest.json)
+- 🎞️ [Letterboxd](https://letterboxd.almosteffective.com/configure)
 
 ---
 
@@ -46,3 +47,7 @@ If you don't want to log in, you can use the [Link Generator](https://0f693ad7dc
 Special thanks to the following repositories which were used to map anime IDs:  
 - [Fribb / anime-lists](https://github.com/Fribb/anime-lists)  
 - [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs)
+
+## Version Mapping (Source of Truth)
+- Git tag → Docker tag → Koyeb host → BG version
+- v0.2.8-combo (planned) → greenbluegreen/toast-translator:combo-0.2.8c → toast-translator-kaloyan8907-8d1fe372.koyeb.app → BG 0.2.8 (bundled)
