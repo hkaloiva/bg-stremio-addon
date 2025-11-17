@@ -21,6 +21,7 @@ import zipfile
 import shutil
 import sys
 import urllib.parse
+from pathlib import Path
 
 # Ensure bundled bg_subtitles is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
@@ -49,10 +50,17 @@ with open("languages/languages.json", "r", encoding="utf-8") as f:
 
 # Cache set
 meta_cache = {}
-def open_cache():
+def _get_meta_cache(language: str):
     global meta_cache
-    for language in LANGUAGES:
-        meta_cache[language] = Cache(f"./cache/{language}/meta/tmp",  timedelta(hours=12).total_seconds())
+    if language not in meta_cache:
+        cache_dir = Path(f"./cache/{language}/meta/tmp")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        meta_cache[language] = Cache(cache_dir, timedelta(hours=12).total_seconds())
+    return meta_cache[language]
+
+def open_cache():
+    # Lazy: initialize on first use to avoid many open handles in dev
+    return
 
 def close_cache():
     global meta_cache
@@ -62,8 +70,8 @@ def close_cache():
 def get_cache_lenght():
     global meta_cache
     total_len = 0
-    for language in LANGUAGES:
-        total_len += meta_cache[language].get_len()
+    for cache in meta_cache.values():
+        total_len += cache.get_len()
     return total_len
 
 # Cache
@@ -152,7 +160,7 @@ async def home(request: Request):
 
 @app.get('/{addon_url}/{user_settings}/configure')
 async def configure(addon_url):
-    addon_url = decode_base64_url(addon_url) + '/configure'
+    addon_url = normalize_addon_url(decode_base64_url(addon_url)) + '/configure'
     return RedirectResponse(addon_url)
 
 @app.get('/link_generator', response_class=HTMLResponse)
@@ -190,7 +198,7 @@ async def letterboxd_multi_manifest(user_settings: str):
 
 @app.get('/{addon_url}/{user_settings}/manifest.json')
 async def get_manifest(addon_url, user_settings):
-    addon_url = decode_base64_url(addon_url)
+    addon_url = normalize_addon_url(decode_base64_url(addon_url))
     user_settings = parse_user_settings(user_settings)
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         response = await client.get(f"{addon_url}/manifest.json")
@@ -244,9 +252,9 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
 
     # Convert addon base64 url (fallback to raw if already plain)
     try:
-        addon_url = decode_base64_url(addon_url)
+        addon_url = normalize_addon_url(decode_base64_url(addon_url))
     except Exception:
-        addon_url = addon_url
+        addon_url = normalize_addon_url(addon_url)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
         if addon_url == 'letterboxd-multi' or lb_multi:
@@ -334,7 +342,7 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
     headers = dict(request.headers)
     del headers['host']
 
-    addon_url = decode_base64_url(addon_url)
+    addon_url = normalize_addon_url(decode_base64_url(addon_url))
     user_settings = parse_user_settings(user_settings)
     language = user_settings.get('language', 'it-IT')
     tmdb_key = user_settings.get('tmdb_key', None)
@@ -342,7 +350,8 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
 
         # Get from cache
-        meta = meta_cache[language].get(id)
+        meta_cache_handle = _get_meta_cache(language)
+        meta = meta_cache_handle.get(id)
 
         # Return cached meta
         if meta != None:
@@ -530,14 +539,14 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
 
 
             meta['meta']['id'] = id
-            meta_cache[language].set(id, meta)
+            meta_cache_handle.set(id, meta)
             return JSONResponse(content=meta, headers=cloudflare_cache_headers)
 
 
 # Addon catalog reponse
 @app.get('/{addon_url}/{user_settings}/addon_catalog/{path:path}')
 async def get_addon_catalog(addon_url, path: str):
-    addon_url = decode_base64_url(addon_url)
+    addon_url = normalize_addon_url(decode_base64_url(addon_url))
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
         response = await client.get(f"{addon_url}/addon_catalog/{path}")
         return JSONResponse(content=response.json(), headers=cloudflare_cache_headers)
@@ -545,13 +554,13 @@ async def get_addon_catalog(addon_url, path: str):
 # Subs redirect
 @app.get('/{addon_url}/{user_settings}/subtitles/{path:path}')
 async def get_subs(addon_url, path: str):
-    addon_url = decode_base64_url(addon_url)
+    addon_url = normalize_addon_url(decode_base64_url(addon_url))
     return RedirectResponse(f"{addon_url}/subtitles/{path}")
 
 # Stream redirect
 @app.get('/{addon_url}/{user_settings}/stream/{path:path}')
 async def get_subs(addon_url, path: str):
-    addon_url = decode_base64_url(addon_url)
+    addon_url = normalize_addon_url(decode_base64_url(addon_url))
     return RedirectResponse(f"{addon_url}/stream/{path}")
 
 
@@ -733,6 +742,21 @@ def decode_base64_url(encoded_url):
     except Exception:
         # Already plain URL
         return encoded_url
+
+
+def normalize_addon_url(raw_url: str) -> str:
+    """Remove trailing manifest.json and slash, preserve query."""
+    if not raw_url:
+        return raw_url
+    try:
+        parsed = urllib.parse.urlparse(raw_url)
+        path = parsed.path or ""
+        if path.endswith("/manifest.json"):
+            path = path[: -len("/manifest.json")]
+        normalized = parsed._replace(path=path).geturl().rstrip("/")
+        return normalized
+    except Exception:
+        return raw_url.rstrip("/")
 
 
 # Anime only
