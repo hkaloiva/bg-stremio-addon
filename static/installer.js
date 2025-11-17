@@ -1,5 +1,11 @@
 var transteArray = [];
 
+function sanitizeAlias(raw) {
+    if (!raw) return "";
+    const cleaned = raw.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    return cleaned.slice(0, 40);
+}
+
 async function translateSelected(authKey, selectList) {
 
     // ✅ Check TMDB API Key validity
@@ -87,6 +93,8 @@ function generateTranslatorLink(addonUrl, rpdb, toast_ratings, tsPoster) {
     const language = document.getElementById("language").value;
     let rpdbKey = document.getElementById("rpdb-key").value;
     const topPosterKey = document.getElementById("top-key").value;
+    const aliasInput = document.getElementById("alias-key");
+    const alias = aliasInput ? sanitizeAlias(aliasInput.value) : "";
     if (!rpdbKey) {
         rpdbKey = "t0-free-rpdb";
     }
@@ -96,6 +104,9 @@ function generateTranslatorLink(addonUrl, rpdb, toast_ratings, tsPoster) {
     }
     else if (tsPoster) {
         userSettings += `,topkey=${topPosterKey}`
+    }
+    if (alias) {
+        userSettings += `,alias=${alias}`;
     }
     
     if (addonUrl.includes(serverUrl)) {

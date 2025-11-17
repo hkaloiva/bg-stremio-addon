@@ -180,6 +180,7 @@ async def get_manifest():
 async def letterboxd_multi_manifest(user_settings: str):
     settings = parse_user_settings(user_settings)
     language = settings.get('language', 'bg-BG')
+    alias = sanitize_alias(settings.get('alias', ''))
     with open("manifest.json", "r", encoding="utf-8") as f:
         manifest = json.load(f)
     manifest['translated'] = True
@@ -187,6 +188,11 @@ async def letterboxd_multi_manifest(user_settings: str):
     manifest['name'] += f" {translator.LANGUAGE_FLAGS.get(language, '')}"
     desc = manifest.get('description', '')
     manifest['description'] = (desc + " | Multi Letterboxd translator.") if desc else "Multi Letterboxd translator."
+    if alias:
+        manifest['id'] = f"{manifest['id']}.{alias}"
+        manifest['name'] = f"{manifest['name']} [{alias}]"
+    if not manifest.get('types'):
+        manifest['types'] = ['movie', 'series']
     # One synthetic catalog entry
     manifest['catalogs'] = [{
         "id": "letterboxd-multi",
@@ -200,6 +206,7 @@ async def letterboxd_multi_manifest(user_settings: str):
 async def get_manifest(addon_url, user_settings):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     user_settings = parse_user_settings(user_settings)
+    alias = sanitize_alias(user_settings.get('alias', ''))
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         response = await client.get(f"{addon_url}/manifest.json")
         manifest = response.json()
@@ -233,6 +240,13 @@ async def get_manifest(addon_url, user_settings):
     if FORCE_META:
         if 'meta' not in manifest['resources']:
             manifest['resources'].append('meta')
+
+    if alias:
+        manifest['id'] = f"{manifest['id']}.{alias}"
+        manifest['name'] = f"{manifest['name']} [{alias}]"
+
+    if not manifest.get('types'):
+        manifest['types'] = ['movie', 'series']
 
     return JSONResponse(content=manifest, headers=cloudflare_cache_headers)
 
@@ -789,14 +803,30 @@ async def remove_duplicates(catalog) -> None:
 
 
 def parse_user_settings(user_settings: str) -> dict:
-    settings = user_settings.split(',')
     _user_settings = {}
-
-    for setting in settings:
-        key, value = setting.split('=')
+    if not user_settings:
+        return _user_settings
+    parts = [s for s in user_settings.split(',') if s]
+    for setting in parts:
+        if '=' not in setting:
+            continue
+        key, value = setting.split('=', 1)
+        if not key:
+            continue
         _user_settings[key] = value
-    
     return _user_settings
+
+
+def sanitize_alias(raw_alias: str) -> str:
+    """Limit alias to safe chars for manifest.id/name."""
+    if not raw_alias:
+        return ""
+    alias = raw_alias.strip().lower()
+    safe = []
+    for ch in alias:
+        if ch.isalnum() or ch in ['-', '_']:
+            safe.append(ch)
+    return "".join(safe)[:40]
 
 
 @app.get("/healthz")
