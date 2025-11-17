@@ -49,7 +49,3 @@ Special thanks to the following repositories which were used to map anime IDs:
 - [Fribb / anime-lists](https://github.com/Fribb/anime-lists)  
 - [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs)
 - Original addon created by [@diogomiguel93](https://github.com/diogomiguel93)
-
-## Version Mapping (Source of Truth)
-- Git tag → Docker tag → Koyeb host → BG version
-- v0.2.8-combo (planned) → greenbluegreen/toast-translator:combo-0.2.8c → toast-translator-kaloyan8907-8d1fe372.koyeb.app → BG 0.2.8 (bundled)
