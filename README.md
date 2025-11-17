@@ -14,6 +14,7 @@
 - 🍜 [Anime Catalogs](https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/configure)
 - 🦸‍♂️ [Marvel Catalogs](https://addon-marvel.onrender.com/manifest.json)
 - 🎞️ [Letterboxd](https://letterboxd.almosteffective.com/configure)
+- 📦 [Stremthru lists bundle](https://stremthru.elfhosted.com/)
 
 ---
 
