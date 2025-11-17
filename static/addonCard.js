@@ -30,19 +30,56 @@ const compatibilityList = [
     //"com.sagetendo.mal-stremio-addon",  // MAL Addon
     "dev.filmwhisper.",                 // AI Film Whisper
     "community.anime.kitsu.search",     // Kitsu search addon
-    "com.joaogonp.marveladdon"         // Marvel addon
+    "com.joaogonp.marveladdon",        // Marvel addon
+    "github.megadrive.stremio.letterboxd" // Letterboxd addon
     //"org.stremio.aiolists"              //AIO Lists
 ]
 
+function isCompatible(manifest) {
+    if (!manifest || !manifest.id) return false;
+    if (compatibilityList.some(id => manifest.id.startsWith(id))) {
+        return true;
+    }
+    // Fallback: allow generic catalog-providing manifests
+    if (Array.isArray(manifest.resources)) {
+        const names = manifest.resources.map(r => {
+            if (typeof r === "string") return r;
+            if (r && typeof r === "object") return r.name || "";
+            return "";
+        });
+        if (names.includes("catalog")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+function normalizeAddonUrl(rawUrl) {
+    if (!rawUrl) return "";
+    let url = rawUrl.trim();
+    if (url.startsWith("stremio://")) {
+        url = "https://" + url.slice("stremio://".length);
+    }
+    if (url.startsWith("//")) {
+        url = "https:" + url;
+    }
+    // If user pasted a configure page, try the manifest endpoint
+    if (url.endsWith("/configure")) {
+        url = url.replace(/\/configure$/, "/manifest.json");
+    }
+    return url;
+}
 
 async function loadAddon(url, _showError=false, type="default", appendNow=true) {
-    if (!url) {
+    const normalizedUrl = normalizeAddonUrl(url);
+    if (!normalizedUrl) {
         showError("❌ Invalid URL.");
         return null;
     }
 
     try {
-        const response = await fetch(url);
+        const response = await fetch(normalizedUrl);
         if (!response.ok) {
             if (_showError) showError(`❌ Error: ${response.status}`);
             return null;
@@ -51,20 +88,21 @@ async function loadAddon(url, _showError=false, type="default", appendNow=true) 
         const manifest = await response.json();
         const serverUrl = window.location.origin;
 
-        if (!compatibilityList.some(id => manifest.id.startsWith(id))) {
+        if (!isCompatible(manifest)) {
             if (_showError) showError("❌ Incompatible addon.");
             return null;
         }
 
-        if ("translated" in manifest && !url.includes(serverUrl)) {
+        if ("translated" in manifest && !normalizedUrl.includes(serverUrl)) {
             return null;
         }
 
         // Return the element without immediately appending
-        return createAddonCard(manifest, url, type, appendNow);
+        return createAddonCard(manifest, normalizedUrl, type, appendNow);
 
     } catch (error) {
         console.log(error);
+        if (_showError) showError("❌ Failed to load addon manifest.");
         return null;
     }
 }

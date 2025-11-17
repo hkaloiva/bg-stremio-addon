@@ -6,3 +6,4 @@
 - Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
 - Env: same as current deployment (see .env.sample)
 - Normalize addon URLs to accept manifest URLs that already end with `/manifest.json` (e.g., stremthru bundler)
+- Accept `stremio://` and `/configure` addon links from the UI (auto-converted to manifest URLs); show clear error if fetch fails
