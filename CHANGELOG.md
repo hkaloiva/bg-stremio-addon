@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.2.8-combo (planned)
+## v0.2.9-combo
 - Bundled BG subtitles v0.2.8 locally (served under /bg)
-- Docker: greenbluegreen/toast-translator:combo-0.2.8c
+- Docker: greenbluegreen/toast-translator:v0.2.9-combo (also push v0.2.9-combo-<shortsha>)
 - Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
 - Env: same as current deployment (see .env.sample)
 - Normalize addon URLs to accept manifest URLs that already end with `/manifest.json` (e.g., stremthru bundler)
