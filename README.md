@@ -1,5 +1,10 @@
 # A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v0.2.12-blue)
 
+## Live Instance
+- Public URL: `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/`
+- Wake endpoint (kept warm via GitHub Action): `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/wake`
+- Navigate via any browser; the Link Generator and installer are available directly from the root page.
+
 ---
 
 ## 📚 Compatible catalogs
