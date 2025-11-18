@@ -100,10 +100,11 @@ async def lifespan(app: FastAPI):
     print('Started')
     # Open Cache
     open_all_cache()
-    # Load anime mapping lists
-    await anime_mapping.download_maps()
-    kitsu.load_anime_map()
-    mal.load_anime_map()
+    # Load anime mapping lists (skip in testing to avoid network)
+    if not os.getenv("TESTING"):
+        await anime_mapping.download_maps()
+        kitsu.load_anime_map()
+        mal.load_anime_map()
     yield
     print('Shutdown')
     # Cache close
