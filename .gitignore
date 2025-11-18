@@ -11,3 +11,4 @@ bg_subs_*.log
 *.DS_Store
 node_modules/
 Translator/
+push_action.env

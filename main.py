@@ -31,7 +31,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
 
 # Settings
-translator_version = 'v0.1.9'
+translator_version = 'v1.0.0'
 FORCE_PREFIX = False
 FORCE_META = False
 USE_TMDB_ID_META = True
