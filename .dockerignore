@@ -1,0 +1,16 @@
+.venv
+.git
+__pycache__
+*.pyc
+cache
+bg_subtitles_app/cache
+bg_subtitles_app/src/__pycache__
+bg_subtitles_app/tests/__pycache__
+bg_subtitles_app/src/test_*
+bg_subtitles_app/tests/
+tests/__pycache__
+*.log
+*.tmp
+*.tar
+*.zip
+*.rar
