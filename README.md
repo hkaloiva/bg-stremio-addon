@@ -1,4 +1,4 @@
-# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles)
+# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v0.2.12-blue)
 
 ---
 
@@ -8,7 +8,6 @@
 - 📺 [Streaming Catalogs](https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/configure)
 - 🎥 [IMDB Catalogs](https://1fe84bc728af-imdb-catalogs.baby-beamup.club/manifest.json)
 - 🍅 [Rotten Tomatoes Catalogs](https://7a82163c306e-rottentomatoes.baby-beamup.club/manifest.json)
-- 📊 [MDBLists Catalogs](https://1fe84bc728af-stremio-mdblist.baby-beamup.club/configure)
 - 🎭 [Trakt](https://trakt.dexter21767.com/configure/)
 - 🍣 [Anime Kitsu](https://anime-kitsu.strem.fun/manifest.json)
 - 🍜 [Anime Catalogs](https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/configure)

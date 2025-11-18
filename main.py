@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, Query, UploadFile, File
+from fastapi import FastAPI, Request, Response, Query, UploadFile, File, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,7 @@ import meta_merger
 import meta_builder
 import translator
 import asyncio
+from typing import List, Dict, Optional
 import httpx
 from api import tmdb, tvdb
 import base64
@@ -202,14 +203,26 @@ async def letterboxd_multi_manifest(user_settings: str):
     }]
     return JSONResponse(content=manifest, headers=cloudflare_cache_headers)
 
+
 @app.get('/{addon_url}/{user_settings}/manifest.json')
 async def get_manifest(addon_url, user_settings):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     user_settings = parse_user_settings(user_settings)
     alias = sanitize_alias(user_settings.get('alias', ''))
+    # Auto-enable RPDB if key present and flag missing
+    if user_settings.get('rpdb_key') and user_settings.get('rpdb') is None:
+        user_settings['rpdb'] = '1'
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         response = await client.get(f"{addon_url}/manifest.json")
-        manifest = response.json()
+        if response.status_code >= 400:
+            detail = f"Upstream manifest fetch failed ({response.status_code})"
+            raise HTTPException(status_code=502, detail=detail)
+        try:
+            manifest = response.json()
+        except Exception:
+            snippet = response.text[:200] if response.text else ""
+            detail = f"Upstream manifest not JSON. Snippet: {snippet}"
+            raise HTTPException(status_code=502, detail=detail)
 
     is_translated = manifest.get('translated', False)
     if not is_translated:
@@ -745,6 +758,11 @@ async def get_poster_placeholder():
 async def get_languages():
     with open("languages/languages.json", "r", encoding="utf-8") as f:
         return JSONResponse(content=json.load(f), headers=cloudflare_cache_headers)
+
+# Lightweight wake endpoint to bring the app out of sleep without loading catalogs
+@app.get('/wake')
+async def wake():
+    return JSONResponse(content={"status": "awake"}, headers=cloudflare_cache_headers)
 
 
 def decode_base64_url(encoded_url):

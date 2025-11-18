@@ -1,0 +1,14 @@
+name: Wake Toast Translator
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"  # every 10 minutes
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /wake
+        run: |
+          curl -fsS --max-time 20 https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/wake
