@@ -311,8 +311,15 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
                 await remove_duplicates(catalog)
 
         if 'metas' in catalog:
+            # Drop any malformed entries before processing
+            metas = catalog.get('metas') or []
+            original_count = len(metas)
+            catalog['metas'] = [m for m in metas if isinstance(m, dict)]
+            if original_count != len(catalog['metas']):
+                print(f"Filtered {original_count - len(catalog['metas'])} invalid metas from catalog")
+
             has_letterboxd = any(
-                meta.get('id', '').startswith('letterboxd:') or meta.get('imdb_id', '').startswith('letterboxd:')
+                (meta.get('id') or '').startswith('letterboxd:') or (meta.get('imdb_id') or '').startswith('letterboxd:')
                 for meta in catalog['metas']
             )
 
@@ -322,6 +329,10 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
             tasks = []
             for item in catalog['metas']:
                 id = item.get('imdb_id', item.get('id'))
+                if not id:
+                    tasks.append(asyncio.sleep(0, result={}))
+                    continue
+
                 cached = tmdb.tmp_cache[language].get(id)
 
                 if cached:
@@ -797,16 +808,23 @@ async def remove_duplicates(catalog) -> None:
     unique_items = []
     seen_ids = set()
     
-    for item in catalog['metas']:
+    for item in catalog.get('metas') or []:
+        if not isinstance(item, dict):
+            continue
+
+        item_id = item.get('id')
+        if not item_id:
+            continue
 
         # Get imdb id and animetype from catalog data
         anime_type = item.get('animeType', None)
-        if 'kitsu' in item['id']:
-            imdb_id, is_converted = await kitsu.convert_to_imdb(item['id'], item['type'])
-        elif 'mal_' in item['id']:
-            imdb_id, is_converted = await mal.convert_to_imdb(item['id'].replace('_',':'), item['type'])
-        elif 'tt' in item['id']:
-            imdb_id = item['id']
+        imdb_id = None
+        if 'kitsu' in item_id:
+            imdb_id, is_converted = await kitsu.convert_to_imdb(item_id, item.get('type'))
+        elif 'mal_' in item_id:
+            imdb_id, is_converted = await mal.convert_to_imdb(item_id.replace('_',':'), item.get('type'))
+        elif 'tt' in item_id:
+            imdb_id = item_id
         item['imdb_id'] = imdb_id
 
         # Add special, ona, ova, movies
