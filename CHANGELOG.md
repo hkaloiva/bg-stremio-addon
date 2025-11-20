@@ -1,5 +1,11 @@
 # Changelog
 
+# v1.0.2
+- Default output language now forces Bulgarian (bg-BG) even when user settings are missing or unsupported; avoids tmdb cache key crashes.
+- TMDB addon path keeps parsed JSON responses and fixes breaker guardrails for subtitles providers (no retries after breaker fires).
+- Docker: greenbluegreen/toast-translator:v1.0.2 (also push v1.0.2-<shortsha>)
+- Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
+
 # v1.0.1
 - Harden catalog processing to ignore null/invalid metas from upstream feeds (fixes letterboxd/id None crashes).
 - Anime duplicate cleanup now skips malformed entries.

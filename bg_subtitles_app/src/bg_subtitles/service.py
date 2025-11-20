@@ -480,21 +480,11 @@ async def _run_provider_task(
                 timeout_flag = True
                 error_text = "timeout"
                 stats["timeouts"] += 1
-                if attempt < _PROVIDER_RETRIES:
-                    stats["retries"] += 1
-                    await asyncio.sleep(delay)
-                    delay *= 2
-                    continue
                 nsub_module._remember_failure(source_id, cache_key, "timeout", ttl=breaker_ttl)
                 stats["failed"] += 1
                 break
             except Exception as exc:  # noqa: BLE001
                 error_text = str(exc)
-                if attempt < _PROVIDER_RETRIES:
-                    stats["retries"] += 1
-                    await asyncio.sleep(delay)
-                    delay *= 2
-                    continue
                 nsub_module._remember_failure(source_id, cache_key, error_text, ttl=breaker_ttl)
                 stats["failed"] += 1
                 break

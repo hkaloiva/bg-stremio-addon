@@ -28,7 +28,8 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
 
 # Settings
-translator_version = 'v1.0.0'
+translator_version = 'v1.0.2'
+DEFAULT_LANGUAGE = "bg-BG"
 FORCE_PREFIX = False
 FORCE_META = False
 USE_TMDB_ID_META = True
@@ -208,6 +209,7 @@ async def get_manifest(addon_url, user_settings):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     user_settings = parse_user_settings(user_settings)
     alias = sanitize_alias(user_settings.get('alias', ''))
+    language = user_settings.get('language') or DEFAULT_LANGUAGE
     # Auto-enable RPDB if key present and flag missing
     if user_settings.get('rpdb_key') and user_settings.get('rpdb') is None:
         user_settings['rpdb'] = '1'
@@ -226,8 +228,8 @@ async def get_manifest(addon_url, user_settings):
     is_translated = manifest.get('translated', False)
     if not is_translated:
         manifest['translated'] = True
-        manifest['t_language'] = user_settings.get('language', 'it-IT')
-        manifest['name'] += f" {translator.LANGUAGE_FLAGS[user_settings.get('language', 'it-IT')]}"
+        manifest['t_language'] = language
+        manifest['name'] += f" {translator.LANGUAGE_FLAGS.get(language, '')}"
 
         if 'description' in manifest:
             manifest['description'] += f" | Translated by Toast Translator. {translator_version}"
@@ -267,7 +269,9 @@ async def get_manifest(addon_url, user_settings):
 async def get_catalog(response: Response, addon_url, type: str, user_settings: str, path: str):
     # User settings
     user_settings = parse_user_settings(user_settings)
-    language = user_settings.get('language', 'it-IT')
+    language = user_settings.get('language') or DEFAULT_LANGUAGE
+    if language not in tmdb.tmp_cache:
+        language = DEFAULT_LANGUAGE
     tmdb_key = user_settings.get('tmdb_key', None)
     rpdb = user_settings.get('rpdb', 'true')
     rpdb_key = user_settings.get('rpdb_key', 't0-free-rpdb')
@@ -381,7 +385,9 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
 
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     user_settings = parse_user_settings(user_settings)
-    language = user_settings.get('language', 'it-IT')
+    language = user_settings.get('language') or DEFAULT_LANGUAGE
+    if language not in tmdb.tmp_cache:
+        language = DEFAULT_LANGUAGE
     tmdb_key = user_settings.get('tmdb_key', None)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
@@ -400,6 +406,7 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
             if 'tt' in id:
                 if USE_TMDB_ADDON:
                     tmdb_id = await tmdb.convert_imdb_to_tmdb(id, language, tmdb_key)
+                    tmdb_meta = {}
                     tasks = [
                         client.get(f"{tmdb_addon_meta_url}/meta/{type}/{tmdb_id}.json"),
                         client.get(f"{cinemeta_url}/meta/{type}/{id}.json")
@@ -407,23 +414,20 @@ async def get_meta(request: Request,response: Response, addon_url, user_settings
                     metas = await asyncio.gather(*tasks)
                 
                     # TMDB addon retry and switch addon
-                    for retry in range(6):
-                        if metas[0].status_code == 200:
-                            tmdb_meta = metas[0].json()
-                            break
-                        else:
+                    tmdb_response = metas[0]
+                    if tmdb_response.status_code == 200:
+                        tmdb_meta = tmdb_response.json()
+                    else:
+                        for retry in range(6):
                             index = tmdb_addons_pool.index(tmdb_addon_meta_url)
                             tmdb_addon_meta_url = tmdb_addons_pool[(index + 1) % len(tmdb_addons_pool)]
-                            metas[0] = await client.get(f"{tmdb_addon_meta_url}/meta/{type}/{tmdb_id}.json")
-                            if metas[0].status_code == 200:
-                                tmdb_meta = metas[0].json()
+                            tmdb_response = await client.get(f"{tmdb_addon_meta_url}/meta/{type}/{tmdb_id}.json")
+                            if tmdb_response.status_code == 200:
+                                tmdb_meta = tmdb_response.json()
                                 break
-                    tmdb_meta = metas[0]
 
-                    if metas[1].status_code == 200:
-                        cinemeta_meta = metas[1].json()
-                    else:
-                        cinemeta_meta = {}
+                    cinemeta_response = metas[1]
+                    cinemeta_meta = cinemeta_response.json() if cinemeta_response.status_code == 200 else {}
                 else:
                     # Not use TMDB Addon
                     tmdb_meta, cinemeta_meta = await  meta_builder.build_metadata(id, type, language, tmdb_key)
@@ -869,17 +873,6 @@ def sanitize_alias(raw_alias: str) -> str:
 @app.get("/healthz")
 async def healthz():
     return JSONResponse(content={"status": "ok"}, headers=cloudflare_cache_headers)
-
-# Mount BG subtitles (local 0.2.8) under /bg
-try:
-    # bg-subtitles app.py lives at bg_subtitles_app/src/app.py
-    from app import app as bg_app  # type: ignore
-    app.mount("/bg", bg_app)
-except Exception as exc:
-    # Keep startup even if bg mount fails; surface via logs
-    import logging
-    logging.getLogger("uvicorn.error").error("Failed to mount bg subtitles app: %s", exc)
-
 
 if __name__ == '__main__':
     import uvicorn

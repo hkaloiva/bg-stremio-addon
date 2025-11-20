@@ -1,4 +1,4 @@
-# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.0.1-blue)
+# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.0.2-blue)
 
 ## Live Instance
 - Public URL: `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/`
