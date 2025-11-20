@@ -27,11 +27,8 @@ from pathlib import Path
 # Ensure bundled bg_subtitles is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
 
-# Ensure bundled bg_subtitles is importable
-sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
-
 # Settings
-translator_version = 'v0.1.9'
+translator_version = 'v1.0.0'
 FORCE_PREFIX = False
 FORCE_META = False
 USE_TMDB_ID_META = True
@@ -39,6 +36,7 @@ USE_TMDB_ADDON = False
 TRANSLATE_CATALOG_NAME = False
 REQUEST_TIMEOUT = 120
 COMPATIBILITY_ID = ['tt', 'kitsu', 'mal']
+ENABLE_ANIME = False
 
 # ENV file
 #from dotenv import load_dotenv
@@ -101,7 +99,7 @@ async def lifespan(app: FastAPI):
     # Open Cache
     open_all_cache()
     # Load anime mapping lists (skip in testing to avoid network)
-    if not os.getenv("TESTING"):
+    if ENABLE_ANIME and not os.getenv("TESTING"):
         await anime_mapping.download_maps()
         kitsu.load_anime_map()
         mal.load_anime_map()
@@ -157,7 +155,7 @@ cinemeta_url = 'https://v3-cinemeta.strem.io'
 @app.get('/', response_class=HTMLResponse)
 @app.get('/configure', response_class=HTMLResponse)
 async def home(request: Request):
-    response = templates.TemplateResponse("configure.html", {"request": request}, headers=cloudflare_cache_headers)
+    response = templates.TemplateResponse(request, "configure.html", {"request": request}, headers=cloudflare_cache_headers)
     return response
 
 @app.get('/{addon_url}/{user_settings}/configure')
@@ -167,7 +165,7 @@ async def configure(addon_url):
 
 @app.get('/link_generator', response_class=HTMLResponse)
 async def link_generator(request: Request):
-    response = templates.TemplateResponse("link_generator.html", {"request": request}, headers=cloudflare_cache_headers)
+    response = templates.TemplateResponse(request, "link_generator.html", {"request": request}, headers=cloudflare_cache_headers)
     return response
 
 
@@ -596,7 +594,7 @@ async def get_subs(addon_url, path: str):
 
 @app.get('/dashboard', response_class=HTMLResponse)
 async def dashboard(request: Request):
-    response = templates.TemplateResponse("dashboard.html", {"request": request}, headers=cloudflare_cache_headers)
+    response = templates.TemplateResponse(request, "dashboard.html", {"request": request}, headers=cloudflare_cache_headers)
     return response
 
 # Dashboard password check
@@ -610,6 +608,8 @@ def check_auth(password: str = Query(...)):
 # Anime map reloader
 @app.get('/map_reload')
 async def reload_anime_mapping(password: str = Query(...)):
+    if not ENABLE_ANIME:
+        return JSONResponse(content={"status": "Anime support disabled."}, headers=cloudflare_cache_headers)
     if password == ADMIN_PASSWORD:
         await anime_mapping.download_maps()
         kitsu.load_anime_map()
@@ -622,8 +622,8 @@ async def reload_anime_mapping(password: str = Query(...)):
 @app.get('/get_cache_dimension')
 async def reload_anime_mapping(password: str = Query(...)):
     if password == ADMIN_PASSWORD:
-        kitsu_ids = kitsu.get_cache_lenght()
-        mal_ids = mal.get_cache_lenght()
+        kitsu_ids = kitsu.get_cache_lenght() if ENABLE_ANIME else 0
+        mal_ids = mal.get_cache_lenght() if ENABLE_ANIME else 0
         tmdb_elements = tmdb.get_cache_lenght()
         translator_elements = translator.get_cache_lenght()
         meta_elements = get_cache_lenght()

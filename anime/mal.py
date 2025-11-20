@@ -25,13 +25,19 @@ imdb_map = None
 
 def load_anime_map():
 	global imdb_ids_map, imdb_map
-	# Load MAL -> IMDB converter
-	imdb_map = anime_mapping.load_mal_map()
+	# Load MAL -> IMDB converter (gracefully skip if unavailable)
+	try:
+		imdb_map = anime_mapping.load_mal_map()
+	except Exception:
+		imdb_map = {}
 	for mal_id, imdb_id in imdb_map.items():
 		mal_cache_ids.set(f"mal:{mal_id}", imdb_id)
 
 	# Load season / episode map
-	imdb_ids_map = anime_mapping.load_imdb_map()
+	try:
+		imdb_ids_map = anime_mapping.load_imdb_map()
+	except Exception:
+		imdb_ids_map = {}
 
 async def convert_to_imdb(mal_id: str, type: str) -> str:
 	is_converted = False
