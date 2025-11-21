@@ -298,7 +298,7 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
     language = user_settings.get('language') or DEFAULT_LANGUAGE
     if language not in tmdb.tmp_cache:
         language = DEFAULT_LANGUAGE
-    tmdb_key = user_settings.get('tmdb_key', None)
+    tmdb_key = user_settings.get('tmdb_key') or os.environ.get("TMDB_KEY") or tmdb.TMDB_API_KEY
     rpdb = user_settings.get('rpdb', 'true')
     rpdb_key = user_settings.get('rpdb_key', 't0-free-rpdb')
     toast_ratings = user_settings.get('tr', '0')
@@ -417,7 +417,7 @@ async def letterboxd_multi_catalog(type: str, path: str, tmdb_key: str, language
 async def letterboxd_collections_catalog(type: str, path: str, language: str = "bg-BG", rpdb: str = 'true', rpdb_key: str = 't0-free-rpdb', tr: str = '0', tsp: str = '0', topkey: str = '', tmdb_key: str = ''):
     user_settings = {
         'language': language,
-        'tmdb_key': tmdb_key,
+        'tmdb_key': tmdb_key or os.environ.get("TMDB_KEY") or tmdb.TMDB_API_KEY,
         'rpdb': rpdb,
         'rpdb_key': rpdb_key,
         'tr': tr,
