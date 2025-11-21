@@ -292,7 +292,7 @@ async def get_manifest(addon_url, user_settings):
 
 
 @app.get("/{addon_url}/{user_settings}/catalog/{type}/{path:path}")
-async def get_catalog(request: Request, response: Response, addon_url, type: str, user_settings: str, path: str):
+async def get_catalog(request: Request = None, response: Response = None, addon_url=None, type: str = "", user_settings: str = "", path: str = ""):
     # User settings
     user_settings = parse_user_settings(user_settings)
     language = user_settings.get('language') or DEFAULT_LANGUAGE
