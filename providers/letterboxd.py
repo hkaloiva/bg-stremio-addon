@@ -267,6 +267,31 @@ async def fetch_catalog_from_existing_config(
     return {"metas": data.get("metas", [])}
 
 
+def decode_catalog_config(encoded_catalog_id: str) -> Optional[Dict[str, Any]]:
+    """Decode the base64 catalog config into its constituent fields."""
+    try:
+        padding = "=" * (-len(encoded_catalog_id) % 4)
+        raw = base64.b64decode(encoded_catalog_id + padding)
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+
+
+async def fetch_catalog_from_encoded_config(
+    client: httpx.AsyncClient, encoded_catalog_id: str
+) -> Dict[str, Any]:
+    """Decode config and fetch catalog via the live Letterboxd addon."""
+    cfg = decode_catalog_config(encoded_catalog_id)
+    if not cfg:
+        return {}
+    url = cfg.get("url")
+    name = cfg.get("catalogName") or cfg.get("name") or url
+    if not url or not name:
+        return {}
+    metas = await _fetch_letterboxd_catalog(client, url, name)
+    return {"metas": metas}
+
+
 async def _fetch_letterboxd_catalog(
     client: httpx.AsyncClient, url: str, catalog_name: str
 ) -> List[Dict[str, Any]]:

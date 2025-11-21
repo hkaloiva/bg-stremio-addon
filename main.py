@@ -318,9 +318,12 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
             entry = letterboxd.LETTERBOXD_COLLECTIONS.get(encoded_id)
             if not entry:
                 return JSONResponse(content={}, headers=cloudflare_cache_headers)
-            catalog = await letterboxd.fetch_catalog_from_existing_config(
-                client, entry["id"], entry["encodedCatalogId"]
-            )
+            # Prefer live fetch from encoded config to avoid stale/trimmed manifests
+            catalog = await letterboxd.fetch_catalog_from_encoded_config(client, entry["encodedCatalogId"])
+            if not catalog.get("metas"):
+                catalog = await letterboxd.fetch_catalog_from_existing_config(
+                    client, entry["id"], entry["encodedCatalogId"]
+                )
         elif addon_url == 'letterboxd-multi' or lb_multi:
             inputs = []
             # Accept | ; , and newline as separators
