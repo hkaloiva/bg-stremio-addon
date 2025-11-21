@@ -313,7 +313,7 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
         addon_url = normalize_addon_url(addon_url)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
-        if addon_url == 'letterboxd-collections':
+        if addon_url == 'letterboxd-collections' or addon_url.startswith('letterboxd-collections'):
             encoded_id = path.replace(".json", "")
             entry = letterboxd.LETTERBOXD_COLLECTIONS.get(encoded_id)
             if not entry:

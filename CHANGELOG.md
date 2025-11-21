@@ -1,5 +1,10 @@
 # Changelog
 
+# v1.0.4
+- Fix letterboxd collections routing (handle addon_url variants); manifest remains consolidated at `/letterboxd-collections/manifest.json`.
+- Docker: greenbluegreen/toast-translator:v1.0.4 (also push v1.0.4-<shortsha>)
+- Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
+
 # v1.0.3
 - Add consolidated Letterboxd Collections addon (71 catalogs in one manifest) served at `/letterboxd-collections/manifest.json`; reuses pre-generated Letterboxd configs for faster catalog fetch.
 - Docker: greenbluegreen/toast-translator:v1.0.3 (also push v1.0.3-<shortsha>)
