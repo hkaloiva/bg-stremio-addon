@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
 
 # Settings
-translator_version = 'v1.0.2'
+translator_version = 'v1.0.3'
 DEFAULT_LANGUAGE = "bg-BG"
 FORCE_PREFIX = False
 FORCE_META = False
@@ -169,6 +169,32 @@ async def link_generator(request: Request):
     response = templates.TemplateResponse(request, "link_generator.html", {"request": request}, headers=cloudflare_cache_headers)
     return response
 
+@app.get("/letterboxd-collections/manifest.json")
+async def letterboxd_collections_manifest():
+    catalogs = []
+    for encoded_id, entry in letterboxd.LETTERBOXD_COLLECTIONS.items():
+        catalogs.append({
+            "id": encoded_id,
+            "type": "movie",
+            "name": entry.get("catalogName") or entry.get("name") or "Letterboxd Collection",
+            "extra": [
+                {"name": "skip", "isRequired": False}
+            ]
+        })
+    manifest = {
+        "id": "letterboxd-collections",
+        "version": translator_version,
+        "name": "Letterboxd Collections (Translated)",
+        "description": "All Letterboxd curated catalogs in one addon (served by Toast Translator).",
+        "logo": "https://letterboxd.almosteffective.com/logo.png",
+        "resources": ["catalog"],
+        "types": ["movie"],
+        "catalogs": catalogs,
+        "translated": True,
+        "t_language": DEFAULT_LANGUAGE,
+    }
+    return JSONResponse(content=manifest, headers=cloudflare_cache_headers)
+
 
 @app.get("/manifest.json")
 async def get_manifest():
@@ -287,7 +313,15 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
         addon_url = normalize_addon_url(addon_url)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
-        if addon_url == 'letterboxd-multi' or lb_multi:
+        if addon_url == 'letterboxd-collections':
+            encoded_id = path.replace(".json", "")
+            entry = letterboxd.LETTERBOXD_COLLECTIONS.get(encoded_id)
+            if not entry:
+                return JSONResponse(content={}, headers=cloudflare_cache_headers)
+            catalog = await letterboxd.fetch_catalog_from_existing_config(
+                client, entry["id"], entry["encodedCatalogId"]
+            )
+        elif addon_url == 'letterboxd-multi' or lb_multi:
             inputs = []
             # Accept | ; , and newline as separators
             for token in lb_multi.replace('\n', '|').replace(';', '|').replace(',', '|').split('|'):
@@ -374,6 +408,21 @@ async def letterboxd_multi_catalog(type: str, path: str, tmdb_key: str, language
     # Re-use existing logic by formatting settings into the legacy string
     settings_str = ','.join([f"{k}={v}" for k, v in user_settings.items()])
     return await get_catalog(Response(), 'letterboxd-multi', type, settings_str, path)
+
+
+@app.get("/letterboxd-collections/catalog/{type}/{path:path}")
+async def letterboxd_collections_catalog(type: str, path: str, language: str = "bg-BG", rpdb: str = 'true', rpdb_key: str = 't0-free-rpdb', tr: str = '0', tsp: str = '0', topkey: str = '', tmdb_key: str = ''):
+    user_settings = {
+        'language': language,
+        'tmdb_key': tmdb_key,
+        'rpdb': rpdb,
+        'rpdb_key': rpdb_key,
+        'tr': tr,
+        'tsp': tsp,
+        'topkey': topkey
+    }
+    settings_str = ','.join([f"{k}={v}" for k, v in user_settings.items()])
+    return await get_catalog(Response(), 'letterboxd-collections', type, settings_str, path)
 
 
 @app.get('/{addon_url}/{user_settings}/meta/{type}/{id}.json')

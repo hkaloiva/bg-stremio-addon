@@ -1,5 +1,10 @@
 # Changelog
 
+# v1.0.3
+- Add consolidated Letterboxd Collections addon (71 catalogs in one manifest) served at `/letterboxd-collections/manifest.json`; reuses pre-generated Letterboxd configs for faster catalog fetch.
+- Docker: greenbluegreen/toast-translator:v1.0.3 (also push v1.0.3-<shortsha>)
+- Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
+
 # v1.0.2
 - Default output language now forces Bulgarian (bg-BG) even when user settings are missing or unsupported; avoids tmdb cache key crashes.
 - TMDB addon path keeps parsed JSON responses and fixes breaker guardrails for subtitles providers (no retries after breaker fires).

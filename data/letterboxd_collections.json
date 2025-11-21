@@ -1,0 +1,141 @@
+[
+  {
+    "id": "02fe86ae-b644-44e5-b082-4fd4147e0542",
+    "name": "Letterboxd - Horror",
+    "description": "Adds Horror as a catalog. Using List posters.",
+    "catalogName": "Horror",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkhvcnJvciIsImZ1bGxNZXRhZGF0YSI6ZmFsc2UsIm9yaWdpbiI6Imh0dHBzOi8vbGV0dGVyYm94ZC5hbG1vc3RlZmZlY3RpdmUuY29tIiwicG9zdGVyQ2hvaWNlIjoibGV0dGVyYm94ZC1jdXN0b20tZnJvbS1saXN0IiwicnBkYkFwaUtleSI6IiIsInVybCI6Imh0dHBzOi8vbGV0dGVyYm94ZC5jb20vYWxlX3gvbGlzdC9ob3Jyb3IvIn0=",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "040d4d9a-e762-4ba3-bde9-31a79c2cc3e0",
+    "name": "Letterboxd - Comedy",
+    "description": "Adds Comedy as a catalog. Using List posters.",
+    "catalogName": "Comedy",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkNvbWVkeSIsImZ1bGxNZXRhZGF0YSI6ZmFsc2UsIm9yaWdpbiI6Imh0dHBzOi8vbGV0dGVyYm94ZC5hbG1vc3RlZmZlY3RpdmUuY29tIiwicG9zdGVyQ2hvaWNlIjoibGV0dGVyYm94ZC1jdXN0b20tZnJvbS1saXN0IiwicnBkYkFwaUtleSI6IiIsInVybCI6Imh0dHBzOi8vbGV0dGVyYm94ZC5jb20vdW1tYWd1bW1hL2xpc3QvY29tZWR5LyJ9",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "0471d142-60dd-46c8-b4c2-7025f0900b90",
+    "name": "Letterboxd - comedy (CLEANUP)",
+    "description": "Adds comedy (CLEANUP) as a catalog. Using List posters.",
+    "catalogName": "comedy (CLEANUP)",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6ImNvbWVkeSAoQ0xFQU5VUCkiLCJmdWxsTWV0YWRhdGEiOmZhbHNlLCJvcmlnaW4iOiJodHRwczovL2xldHRlcmJveGQuYWxtb3N0ZWZmZWN0aXZlLmNvbSIsInBvc3RlckNob2ljZSI6ImxldHRlcmJveGQtY3VzdG9tLWZyb20tbGlzdCIsInJwZGJBcGlLZXkiOiIiLCJ1cmwiOiJodHRwczovL2xldHRlcmJveGQuY29tL2tvbGxhY2tzb25hbWUvZW1iZWRzL2NvbWVkeS1saXN0LWZvci1lcmVtc2ktd3VuLWNvcHkuLyJ9",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "06526577-5761-4c66-ab72-2aa5e12f25eb",
+    "name": "Letterboxd - Drama",
+    "description": "Adds Drama as a catalog. Using List posters.",
+    "catalogName": "Drama",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkRyYW1hIiwiZnVsbE1ldGFkYXRhIjpmYWxzZSwib3JpZ2luIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmFsbW9zdGVmZmVjdGl2ZS5jb20iLCJwb3N0ZXJDaG9pY2UiOiJsZXR0ZXJib3hkLWN1c3RvbS1mcm9tLWxpc3QiLCJycGRiQXBpS2V5IjoiIiwidXJsIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmNvbS9jbGV2ZXJfZGllZ28vbGlzdC9kcmFtYS8ifQ==",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "13c8c8d6-c001-4663-b1a5-aa69117a0ad2",
+    "name": "Letterboxd - Film Noir",
+    "description": "Adds Film Noir as a catalog. Using List posters.",
+    "catalogName": "Film Noir",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkZpbG0gTm9pciIsImZ1bGxNZXRhZGF0YSI6ZmFsc2UsIm9yaWdpbiI6Imh0dHBzOi8vbGV0dGVyYm94ZC5hbG1vc3RlZmZlY3RpdmUuY29tIiwicG9zdGVyQ2hvaWNlIjoibGV0dGVyYm94ZC1jdXN0b20tZnJvbS1saXN0IiwicnBkYkFwaUtleSI6IiIsInVybCI6Imh0dHBzOi8vbGV0dGVyYm94ZC5jb20vZGFudXNvdWwvcm5vc2VtYXJ5LWRsZS1maWxtLW5vaXItaW4tdGhlLXNvb2Rpc2gtcmFsZS13aWNrbC9saXN0L2RlY2FkZXMtb2YtZGVzcG9sYXRpb24tbm9pci8ifQ==",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "15cb1576-76f2-4d02-a010-24dc8b1d1583",
+    "name": "Letterboxd - tom cruise",
+    "description": "Adds tom cruise as a catalog. Using List posters.",
+    "catalogName": "tom cruise",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6InRvbSBjcnVpc2UiLCJmdWxsTWV0YWRhdGEiOmZhbHNlLCJvcmlnaW4iOiJodHRwczovL2xldHRlcmJveGQuYWxtb3N0ZWZmZWN0aXZlLmNvbSIsInBvc3RlckNob2ljZSI6ImxldHRlcmJveGQtY3VzdG9tLWZyb20tbGlzdCIsInJwZGJBcGlLZXkiOiIiLCJ1cmwiOiJodHRwczovL2xldHRlcmJveGQuY29tL2NoaWFer3YvbGlzdC90b20tY3J1aXNlLyJ9",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "18e875c4-05d0-4153-b468-58d88fd38372",
+    "name": "Letterboxd - Alfred Hitchcock",
+    "description": "Adds Alfred Hitchcock as a catalog. Using List posters.",
+    "catalogName": "Alfred Hitchcock",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkFsZnJlZCBIaXRjaGNvY2siLCJmdWxsTWV0YWRhdGEiOmZhbHNlLCJvcmlnaW4iOiJodHRwczovL2xldHRlcmJveGQuYWxtb3N0ZWZmZWN0aXZlLmNvbSIsInBvc3RlckNob2ljZSI6ImxldHRlcmJveGQtY3VzdG9tLWZyb20tbGlzdCIsInJwZGJBcGlLZXkiOiIiLCJ1cmwiOiJodHRwczovL2xldHRlcmJveGQuY29tL3BlbGp1ZGUvbGlzdC9jYXRjaC1hLWhpdGNockBkdXN0ZUdtb29rZS8ifQ==",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "1e35c8e9-593e-4340-8fcc-71cd1a9b2868",
+    "name": "Letterboxd - family",
+    "description": "Adds family as a catalog. Using List posters.",
+    "catalogName": "family",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6ImZhbWlseSIsImZ1bGxNZXRhZGF0YSI6ZmFsc2UsIm9yaWdpbiI6Imh0dHBzOi8vbGV0dGVyYm94ZC5hbG1vc3RlZmZlY3RpdmUuY29tIiwicG9zdGVyQ2hvaWNlIjoibGV0dGVyYm94ZC1jdXN0b20tZnJvbS1saXN0IiwicnBkYkFwaUtleSI6IiIsInVybCI6Imh0dHBzOi8vbGV0dGVyYm94ZC5jb20vemVwaGpqaHBqL2xpc3QvMWYtYWN0aW9uLWVuZC1jZmcyLyJ9",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "1fbb2a25-4fa1-4164-a683-0382be3baba0",
+    "name": "Letterboxd - French",
+    "description": "Adds French as a catalog. Using List posters.",
+    "catalogName": "French",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkZyZW5jaCIsImZ1bGxNZXRhZGF0YSI6ZmFsc2UsIm9yaWdpbiI6Imh0dHBzOi8vbGV0dGVyYm94ZC5hbG1vc3RlZmZlY3RpdmUuY29tIiwicG9zdGVyQ2hvaWNlIjoibGV0dGVyYm94ZC1jdXN0b20tZnJvbS1saXN0IiwicnBkYkFwaUtleSI6IiIsInVybCI6Imh0dHBzOi8vbGV0dGVyYm94ZC5jb20vdGhlZ2xvYmVsaWJyYXJ5L2xpc3QvYXZlcy1ibGwgaW1hZ2UgdHVybmUtZGYtMC1lYnMvIn0=",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "22ae5f02-0420-47be-b735-1a66809b5501",
+    "name": "Letterboxd - Classics",
+    "description": "Adds Classics as a catalog. Using List posters.",
+    "catalogName": "Classics",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkNsYXNzaWNzIiwiZnVsbE1ldGFkYXRhIjpmYWxzZSwib3JpZ2luIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmFsbW9zdGVmZmVjdGl2ZS5jb20iLCJwb3N0ZXJDaG9pY2UiOiJsZXR0ZXJib3hkLWN1c3RvbS1mcm9tLWxpc3QiLCJycGRiQXBpS2V5IjoiIiwidXJsIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmNvbS9sb3ZpY2cvbGlzdC9uZXctY2xhc3NpY3MvIn0=",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "22ee9951-f487-489a-ba15-146d3f1825cd",
+    "name": "Letterboxd - Film noir",
+    "description": "Adds Film noir as a catalog. Using List posters.",
+    "catalogName": "Film noir",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkZpbG0gbm9pciIsImZ1bGxNZXRhZGF0YSI6ZmFsc2UsIm9yaWdpbiI6Imh0dHBzOi8vbGV0dGVyYm94ZC5hbG1vc3RlZmZlY3RpdmUuY29tIiwicG9zdGVyQ2hvaWNlIjoibGV0dGVyYm94ZC1jdXN0b20tZnJvbS1saXN0IiwicnBkYkFwaUtleSI6IiIsInVybCI6Imh0dHBzOi8vbGV0dGVyYm94ZC5jb20vcm93bmF0b3Jvc3Rvcy9saXN0L3RvcC0xMC1maWxtLW5vaXIvIn0=",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "230e9e7b-083f-4bbf-8a1c-e81a66391830",
+    "name": "Letterboxd - Coen Brothers",
+    "description": "Adds Coen Brothers as a catalog. Using List posters.",
+    "catalogName": "Coen Brothers",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IkNvZW4gQnJvdGhlcnMiLCJmdWxsTWV0YWRhdGEiOmZhbHNlLCJvcmlnaW4iOiJodHRwczovL2xldHRlcmJveGQuYWxtb3N0ZWZmZWN0aXZlLmNvbSIsInBvc3RlckNob2ljZSI6ImxldHRlcmJveGQtY3VzdG9tLWZyb20tbGlzdCIsInJwZGJBcGlLZXkiOiIiLCJ1cmwiOiJodHRwczovL2xldHRlcmJveGQuY29tL3Njb3dvY3JhbWJsZWRvb2RsZS9saXN0L2luLWZheWUNDAYtZGxpLWNlLWZyZXJlLW1pa2UvIn0=",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "26d93fa3-37f3-4199-9154-46daa51e5e08",
+    "name": "Letterboxd - 2000s",
+    "description": "Adds 2000s as a catalog. Using List posters.",
+    "catalogName": "2000s",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IjIwMDBzIiwiZnVsbE1ldGFkYXRhIjpmYWxzZSwib3JpZ2luIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmFsbW9zdGVmZmVjdGl2ZS5jb20iLCJwb3N0ZXJDaG9pY2UiOiJsZXR0ZXJib3hkLWN1c3RvbS1mcm9tLWxpc3QiLCJycGRiQXBpS2V5IjoiIiwidXJsIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmNvbS9yZW5lbGluaWFvczk4OS9saXN0L3RvcC0xMDAtYmVzdC1tb3ZpZXMtMjAwMC0yMDEwLWRlY2FkZW4tYXZzb2xsby8ifQ==",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },
+  {
+    "id": "298eb3c3-880c-4516-92e7-67644ecea13a",
+    "name": "Letterboxd - 1930s",
+    "description": "Adds 1930s as a catalog. Using List posters.",
+    "catalogName": "1930s",
+    "encodedCatalogId": "eyJjYXRhbG9nTmFtZSI6IjE5MzBzIiwiZnVsbE1ldGFkYXRhIjpmYWxzZSwib3JpZ2luIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmFsbW9zdGVmZmVjdGl2ZS5jb20iLCJwb3N0ZXJDaG9pY2UiOiJsZXR0ZXJib3hkLWN1c3RvbS1mcm9tLWxpc3QiLCJycGRiQXBpS2V5IjoiIiwidXJsIjoiaHR0cHM6Ly9sZXR0ZXJib3hkLmNvbS9zb2Vnam9ja29jay9saXN0LzEwMC1iZXN0LW1vdmllcy1vZi10aGUtMzBwcy9mcmllbmRzLyJ9",
+    "posterChoice": "",
+    "origin": "https://letterboxd.almosteffective.com",
+    "url": ""
+  },

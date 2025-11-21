@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -17,6 +18,7 @@ LETTERBOXD_RESOLVE_BASE = "https://lbxd-id.almosteffective.com/letterboxd"
 LETTERBOXD_ADDON_BASE = "https://letterboxd.almosteffective.com"
 
 resolve_cache: Optional[Cache] = None
+LETTERBOXD_COLLECTIONS: Dict[str, Dict[str, Any]] = {}
 
 
 def open_cache() -> None:
@@ -226,6 +228,43 @@ def _encode_letterboxd_config(url: str, catalog_name: str) -> str:
     sorted_cfg = dict(sorted(cfg.items()))
     payload = json.dumps(sorted_cfg, separators=(',', ':')).encode()
     return base64.b64encode(payload).decode()
+
+
+def _load_collections() -> Dict[str, Dict[str, Any]]:
+    """Load precomputed Letterboxd collections (manifest_id + encoded catalog id)."""
+    data_path = Path(__file__).resolve().parent.parent / "data" / "letterboxd_collections.json"
+    if not data_path.exists():
+        return {}
+    try:
+        with open(data_path, "r", encoding="utf-8") as f:
+            items = json.load(f)
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"[lb_collections] failed to load collections: {exc}")
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        encoded = item.get("encodedCatalogId")
+        if encoded:
+            out[encoded] = item
+    print(f"[lb_collections] loaded {len(out)} collections")
+    return out
+
+
+LETTERBOXD_COLLECTIONS = _load_collections()
+
+
+async def fetch_catalog_from_existing_config(
+    client: httpx.AsyncClient, manifest_id: str, encoded_catalog_id: str
+) -> Dict[str, Any]:
+    """Fetch metas using an already-generated Letterboxd manifest + encoded catalog id."""
+    url = f"{LETTERBOXD_ADDON_BASE}/{manifest_id}/catalog/letterboxd/{encoded_catalog_id}.json"
+    resp = await client.get(url)
+    try:
+        data = resp.json()
+    except Exception:
+        print(f"[lb_collections] fetch failed status={resp.status_code} id={manifest_id}")
+        return {}
+    return {"metas": data.get("metas", [])}
 
 
 async def _fetch_letterboxd_catalog(
