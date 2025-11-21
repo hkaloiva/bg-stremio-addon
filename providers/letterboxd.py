@@ -7,7 +7,8 @@ import base64
 import json
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 
@@ -254,11 +255,11 @@ LETTERBOXD_COLLECTIONS = _load_collections()
 
 
 async def fetch_catalog_from_existing_config(
-    client: httpx.AsyncClient, manifest_id: str, encoded_catalog_id: str
+    client: httpx.AsyncClient, manifest_id: str, encoded_catalog_id: str, params: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Fetch metas using an already-generated Letterboxd manifest + encoded catalog id."""
     url = f"{LETTERBOXD_ADDON_BASE}/{manifest_id}/catalog/letterboxd/{encoded_catalog_id}.json"
-    resp = await client.get(url)
+    resp = await client.get(url, params=params)
     try:
         data = resp.json()
     except Exception:
@@ -278,9 +279,9 @@ def decode_catalog_config(encoded_catalog_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def fetch_catalog_from_encoded_config(
-    client: httpx.AsyncClient, encoded_catalog_id: str
+    client: httpx.AsyncClient, encoded_catalog_id: str, params: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Decode config and fetch catalog via the live Letterboxd addon."""
+    """Decode config and fetch catalog via the live Letterboxd addon (with HTML fallback)."""
     cfg = decode_catalog_config(encoded_catalog_id)
     if not cfg:
         return {}
@@ -288,12 +289,14 @@ async def fetch_catalog_from_encoded_config(
     name = cfg.get("catalogName") or cfg.get("name") or url
     if not url or not name:
         return {}
-    metas = await _fetch_letterboxd_catalog(client, url, name)
-    return {"metas": metas}
+    metas = await _scrape_letterboxd_list(client, url)
+    if not metas:
+        metas = await _fetch_letterboxd_catalog(client, url, name, params=params)
+    return {"metas": _apply_pagination(metas, params)}
 
 
 async def _fetch_letterboxd_catalog(
-    client: httpx.AsyncClient, url: str, catalog_name: str
+    client: httpx.AsyncClient, url: str, catalog_name: str, params: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """Fetch metas for a single Letterboxd list/watchlist using the official addon."""
 
@@ -311,7 +314,8 @@ async def _fetch_letterboxd_catalog(
         return []
 
     catalog_resp = await client.get(
-        f"{LETTERBOXD_ADDON_BASE}/{manifest_id}/catalog/letterboxd/{config_string}.json"
+        f"{LETTERBOXD_ADDON_BASE}/{manifest_id}/catalog/letterboxd/{config_string}.json",
+        params=params,
     )
 
     try:
@@ -332,6 +336,61 @@ def _dedupe_metas(metas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if key not in seen:
             seen[key] = meta
     return list(seen.values())
+
+
+async def _scrape_letterboxd_list(client: httpx.AsyncClient, url: str, max_pages: int = 10) -> List[Dict[str, Any]]:
+    """Scrape a Letterboxd list/watchlist page-by-page to collect all slugs."""
+
+    metas: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    clean_url = url if url.endswith("/") else url + "/"
+    pattern = re.compile(r'/film/([^/]+)/" data-item-full-display-name="([^"]+)"')
+
+    for page in range(1, max_pages + 1):
+        page_url = clean_url if page == 1 else f"{clean_url}page/{page}/"
+        try:
+            resp = await client.get(page_url, headers={"User-Agent": "toast-translator/1.0"})
+        except Exception as exc:
+            print(f"[lb_scrape] request failed page={page} url={page_url} err={exc}")
+            break
+
+        if resp.status_code != 200:
+            break
+
+        matches = pattern.findall(resp.text)
+        if not matches:
+            break
+
+        for slug, title in matches:
+            if slug in seen:
+                continue
+            seen.add(slug)
+            name = title.rsplit("(", 1)[0].strip() if "(" in title else title
+            metas.append({"id": f"letterboxd:{slug}", "type": "movie", "name": name})
+
+    if metas:
+        print(f"[lb_scrape] scraped {len(metas)} metas from {clean_url}")
+
+    return metas
+
+
+def _apply_pagination(metas: List[Dict[str, Any]], params: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not params:
+        return metas
+    try:
+        skip = int(params.get("skip", 0))
+    except Exception:
+        skip = 0
+    try:
+        limit_raw = params.get("limit")
+        limit = int(limit_raw) if limit_raw is not None else None
+    except Exception:
+        limit = None
+
+    sliced = metas[skip:] if skip > 0 else metas
+    if limit is not None and limit >= 0:
+        sliced = sliced[:limit]
+    return sliced
 
 
 async def fetch_multi_list_catalog(

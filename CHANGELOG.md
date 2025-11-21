@@ -1,5 +1,10 @@
 # Changelog
 
+# v1.0.5
+- Letterboxd collections now scrape full list pages to return all titles (no 30-item cap) and honor skip/limit params.
+- Docker: greenbluegreen/toast-translator:v1.0.5 (also push v1.0.5-<shortsha>)
+- Koyeb host: toast-translator-kaloyan8907-8d1fe372.koyeb.app (free)
+
 # v1.0.4
 - Fix letterboxd collections routing (handle addon_url variants); manifest remains consolidated at `/letterboxd-collections/manifest.json`.
 - Docker: greenbluegreen/toast-translator:v1.0.4 (also push v1.0.4-<shortsha>)

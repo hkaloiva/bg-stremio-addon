@@ -292,7 +292,7 @@ async def get_manifest(addon_url, user_settings):
 
 
 @app.get("/{addon_url}/{user_settings}/catalog/{type}/{path:path}")
-async def get_catalog(response: Response, addon_url, type: str, user_settings: str, path: str):
+async def get_catalog(request: Request, response: Response, addon_url, type: str, user_settings: str, path: str):
     # User settings
     user_settings = parse_user_settings(user_settings)
     language = user_settings.get('language') or DEFAULT_LANGUAGE
@@ -312,6 +312,9 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
     except Exception:
         addon_url = normalize_addon_url(addon_url)
 
+    # Pagination / extras (e.g., skip) pass-through
+    query_params = dict(request.query_params) if request else {}
+
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
         if addon_url == 'letterboxd-collections' or addon_url.startswith('letterboxd-collections'):
             encoded_id = path.replace(".json", "")
@@ -319,10 +322,10 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
             if not entry:
                 return JSONResponse(content={}, headers=cloudflare_cache_headers)
             # Prefer live fetch from encoded config to avoid stale/trimmed manifests
-            catalog = await letterboxd.fetch_catalog_from_encoded_config(client, entry["encodedCatalogId"])
+            catalog = await letterboxd.fetch_catalog_from_encoded_config(client, entry["encodedCatalogId"], params=query_params)
             if not catalog.get("metas"):
                 catalog = await letterboxd.fetch_catalog_from_existing_config(
-                    client, entry["id"], entry["encodedCatalogId"]
+                    client, entry["id"], entry["encodedCatalogId"], params=query_params
                 )
         elif addon_url == 'letterboxd-multi' or lb_multi:
             inputs = []
@@ -336,7 +339,7 @@ async def get_catalog(response: Response, addon_url, type: str, user_settings: s
             print(f"[lb_multi] raw='{lb_multi}' parsed={inputs}")
             catalog = await letterboxd.fetch_multi_list_catalog(client, inputs)
         else:
-            response = await client.get(f"{addon_url}/catalog/{type}/{path}")
+            response = await client.get(f"{addon_url}/catalog/{type}/{path}", params=query_params)
 
             # Cinemeta last-videos and calendar
             if 'last-videos' in path or 'calendar-videos' in path:
