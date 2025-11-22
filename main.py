@@ -38,6 +38,7 @@ TRANSLATE_CATALOG_NAME = False
 REQUEST_TIMEOUT = 120
 COMPATIBILITY_ID = ['tt', 'kitsu', 'mal']
 ENABLE_ANIME = False
+SUBS_PROXY_BASE = os.getenv("SUBS_PROXY_BASE", "https://stremio-community-subtitles.top")
 
 # ENV file
 #from dotenv import load_dotenv
@@ -603,6 +604,22 @@ async def get_subs(addon_url, path: str):
 async def get_subs(addon_url, path: str):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     return RedirectResponse(f"{addon_url}/stream/{path}")
+
+# Community subtitles proxy (stremio-community-subtitles)
+@app.api_route('/subs', methods=['GET'])
+@app.api_route('/subs/{path:path}', methods=['GET', 'POST'])
+async def proxy_subtitles(request: Request, path: str = ""):
+    target_url = f"{SUBS_PROXY_BASE}/{path}".rstrip("/")
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    data = await request.body()
+    params = dict(request.query_params)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
+        upstream = await client.request(request.method, target_url, params=params, content=data, headers=headers)
+    # Filter hop-by-hop headers
+    excluded = {"content-encoding", "transfer-encoding", "connection"}
+    resp_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded}
+    return Response(content=upstream.content, status_code=upstream.status_code, headers=resp_headers)
 
 
 ### DASHBOARD ###
