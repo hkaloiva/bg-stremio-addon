@@ -140,10 +140,15 @@ try:
         removed_bg = True
     if comm_root not in sys.path:
         sys.path.insert(0, comm_root)
-    # Preload community_subs app module and alias as 'app' to satisfy run.py import
-    sys.modules.pop("app", None)
-    comm_app_module = importlib.import_module("app")
-    sys.modules["app"] = comm_app_module
+    # Preload community_subs app module (renamed to community_app in Docker build)
+    comm_app_path = os.path.join(comm_root, "community_app", "__init__.py")
+    comm_app_spec = importlib.util.spec_from_file_location("community_app", comm_app_path)
+    if comm_app_spec and comm_app_spec.loader:
+        comm_app_module = importlib.util.module_from_spec(comm_app_spec)
+        comm_app_spec.loader.exec_module(comm_app_module)
+        sys.modules["community_app"] = comm_app_module
+    else:
+        raise ImportError("community_subs community_app module not found")
     if removed_bg:
         sys.path.insert(1, bg_path)
     spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
