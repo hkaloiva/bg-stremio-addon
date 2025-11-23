@@ -133,12 +133,19 @@ except Exception as exc:
 try:
     comm_run_path = os.path.join(os.path.dirname(__file__), "community_subs", "run.py")
     comm_root = os.path.join(os.path.dirname(__file__), "community_subs")
+    bg_path = os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src")
+    removed_bg = False
+    if bg_path in sys.path:
+        sys.path.remove(bg_path)
+        removed_bg = True
     if comm_root not in sys.path:
         sys.path.insert(0, comm_root)
     # Preload community_subs app module and alias as 'app' to satisfy run.py import
     sys.modules.pop("app", None)
     comm_app_module = importlib.import_module("app")
     sys.modules["app"] = comm_app_module
+    if removed_bg:
+        sys.path.insert(1, bg_path)
     spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
     if spec and spec.loader:
         community_run = importlib.util.module_from_spec(spec)
