@@ -136,12 +136,9 @@ try:
     if comm_root not in sys.path:
         sys.path.insert(0, comm_root)
     # Preload community_subs app module and alias as 'app' to satisfy run.py import
-    comm_app_path = os.path.join(comm_root, "app", "__init__.py")
-    comm_app_spec = importlib.util.spec_from_file_location("community_subs_app", comm_app_path)
-    if comm_app_spec and comm_app_spec.loader:
-        comm_app_module = importlib.util.module_from_spec(comm_app_spec)
-        comm_app_spec.loader.exec_module(comm_app_module)
-        sys.modules["app"] = comm_app_module
+    sys.modules.pop("app", None)
+    comm_app_module = importlib.import_module("app")
+    sys.modules["app"] = comm_app_module
     spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
     if spec and spec.loader:
         community_run = importlib.util.module_from_spec(spec)
