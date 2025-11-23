@@ -23,9 +23,14 @@ import shutil
 import sys
 import urllib.parse
 from pathlib import Path
+from starlette.middleware.wsgi import WSGIMiddleware
 
 # Ensure bundled bg_subtitles is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
+# Ensure community subtitles is importable (cloned into /app/community_subs)
+COMMUNITY_SUBS_PATH = os.path.join(os.path.dirname(__file__), "community_subs")
+if os.path.isdir(COMMUNITY_SUBS_PATH):
+    sys.path.append(COMMUNITY_SUBS_PATH)
 
 # Settings
 translator_version = 'v1.0.2'
@@ -38,7 +43,7 @@ TRANSLATE_CATALOG_NAME = False
 REQUEST_TIMEOUT = 120
 COMPATIBILITY_ID = ['tt', 'kitsu', 'mal']
 ENABLE_ANIME = False
-SUBS_PROXY_BASE = os.getenv("SUBS_PROXY_BASE", "https://stremio-community-subtitles.top")
+SUBS_PROXY_BASE = os.getenv("SUBS_PROXY_BASE", "/subs")
 
 # ENV file
 #from dotenv import load_dotenv
@@ -123,6 +128,16 @@ except Exception as exc:
     import logging
     logging.getLogger("uvicorn.error").error("Failed to mount bg subtitles app: %s", exc)
 
+# Mount community subtitles (local clone) under /subs
+try:
+    # clone is under /app/community_subs, we add that to sys.path above
+    import run as community_run  # type: ignore
+    community_app = community_run.app
+    app.mount("/subs", WSGIMiddleware(community_app))
+    print("[init] mounted community subtitles at /subs")
+except Exception as exc:
+    import logging
+    logging.getLogger("uvicorn.error").error("Failed to mount community subtitles app: %s", exc)
 
 stremio_headers = {
     'connection': 'keep-alive', 
@@ -604,28 +619,6 @@ async def get_subs(addon_url, path: str):
 async def get_subs(addon_url, path: str):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     return RedirectResponse(f"{addon_url}/stream/{path}")
-
-# Community subtitles proxy (stremio-community-subtitles)
-@app.api_route('/subs', methods=['GET'])
-@app.api_route('/subs/{path:path}', methods=['GET', 'POST'])
-async def proxy_subtitles(request: Request, path: str = ""):
-    target_url = f"{SUBS_PROXY_BASE}/{path}".rstrip("/")
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    data = await request.body()
-    params = dict(request.query_params)
-    async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
-        upstream = await client.request(request.method, target_url, params=params, content=data, headers=headers)
-    # Filter hop-by-hop headers
-    excluded = {"content-encoding", "transfer-encoding", "connection", "content-length"}
-    resp_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded}
-    return Response(content=upstream.content, status_code=upstream.status_code, headers=resp_headers)
-
-# Convenience redirect for community subtitles registration
-@app.get('/register')
-async def register_redirect():
-    return RedirectResponse(f"{SUBS_PROXY_BASE}/register")
-
 
 ### DASHBOARD ###
 
