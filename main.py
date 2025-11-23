@@ -23,6 +23,7 @@ import shutil
 import sys
 import urllib.parse
 from pathlib import Path
+import importlib.util
 from starlette.middleware.wsgi import WSGIMiddleware
 
 # Ensure bundled bg_subtitles is importable
@@ -130,11 +131,19 @@ except Exception as exc:
 
 # Mount community subtitles (local clone) under /subs
 try:
-    # clone is under /app/community_subs, we add that to sys.path above
-    import run as community_run  # type: ignore
-    community_app = community_run.app
-    app.mount("/subs", WSGIMiddleware(community_app))
-    print("[init] mounted community subtitles at /subs")
+    comm_run_path = os.path.join(os.path.dirname(__file__), "community_subs", "run.py")
+    spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
+    if spec and spec.loader:
+        community_run = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(community_run)
+        community_app = getattr(community_run, "app", None)
+        if community_app:
+            app.mount("/subs", WSGIMiddleware(community_app))
+            print("[init] mounted community subtitles at /subs")
+        else:
+            raise RuntimeError("community_subs app not found")
+    else:
+        raise RuntimeError("cannot load community_subs run.py")
 except Exception as exc:
     import logging
     logging.getLogger("uvicorn.error").error("Failed to mount community subtitles app: %s", exc)
