@@ -30,8 +30,6 @@ from starlette.middleware.wsgi import WSGIMiddleware
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
 # Ensure community subtitles is importable (cloned into /app/community_subs)
 COMMUNITY_SUBS_PATH = os.path.join(os.path.dirname(__file__), "community_subs")
-if os.path.isdir(COMMUNITY_SUBS_PATH):
-    sys.path.append(COMMUNITY_SUBS_PATH)
 
 # Settings
 translator_version = 'v1.0.2'
@@ -131,7 +129,6 @@ except Exception as exc:
 
 # Mount community subtitles (local clone) under /subs
 try:
-    comm_run_path = os.path.join(os.path.dirname(__file__), "community_subs", "run.py")
     comm_root = os.path.join(os.path.dirname(__file__), "community_subs")
     bg_path = os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src")
     removed_bg = False
@@ -140,29 +137,32 @@ try:
         removed_bg = True
     if comm_root not in sys.path:
         sys.path.insert(0, comm_root)
-    # Preload community_subs app module (renamed to community_app in Docker build)
     comm_app_path = os.path.join(comm_root, "community_app", "__init__.py")
+    comm_run_path = os.path.join(comm_root, "run.py")
+
+    # Preload community_subs app module (renamed to community_app in Docker build)
     comm_app_spec = importlib.util.spec_from_file_location("community_app", comm_app_path)
-    if comm_app_spec and comm_app_spec.loader:
-        comm_app_module = importlib.util.module_from_spec(comm_app_spec)
-        comm_app_spec.loader.exec_module(comm_app_module)
-        sys.modules["community_app"] = comm_app_module
-    else:
+    if not comm_app_spec or not comm_app_spec.loader:
         raise ImportError("community_subs community_app module not found")
+    comm_app_module = importlib.util.module_from_spec(comm_app_spec)
+    comm_app_spec.loader.exec_module(comm_app_module)
+    sys.modules["community_app"] = comm_app_module
+
+    # Now load run.py that imports community_app
+    spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
+    if not spec or not spec.loader:
+        raise RuntimeError("cannot load community_subs run.py")
+    community_run = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(community_run)
+    community_app = getattr(community_run, "app", None)
+    if community_app:
+        app.mount("/subs", WSGIMiddleware(community_app))
+        print("[init] mounted community subtitles at /subs")
+    else:
+        raise RuntimeError("community_subs app not found")
+
     if removed_bg:
         sys.path.insert(1, bg_path)
-    spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
-    if spec and spec.loader:
-        community_run = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(community_run)
-        community_app = getattr(community_run, "app", None)
-        if community_app:
-            app.mount("/subs", WSGIMiddleware(community_app))
-            print("[init] mounted community subtitles at /subs")
-        else:
-            raise RuntimeError("community_subs app not found")
-    else:
-        raise RuntimeError("cannot load community_subs run.py")
 except Exception as exc:
     import logging
     logging.getLogger("uvicorn.error").error("Failed to mount community subtitles app: %s", exc)
