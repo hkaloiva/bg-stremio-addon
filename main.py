@@ -132,6 +132,9 @@ except Exception as exc:
 # Mount community subtitles (local clone) under /subs
 try:
     comm_run_path = os.path.join(os.path.dirname(__file__), "community_subs", "run.py")
+    comm_root = os.path.join(os.path.dirname(__file__), "community_subs")
+    if comm_root not in sys.path:
+        sys.path.insert(0, comm_root)
     spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
     if spec and spec.loader:
         community_run = importlib.util.module_from_spec(spec)
