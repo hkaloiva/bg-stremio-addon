@@ -28,8 +28,8 @@ from starlette.middleware.wsgi import WSGIMiddleware
 
 # Ensure bundled bg_subtitles is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
-# Ensure community subtitles is importable (cloned into /app/community_subs)
-COMMUNITY_SUBS_PATH = os.path.join(os.path.dirname(__file__), "community_subs")
+# Ensure community subtitles is importable (vendored into /app/community_vendor)
+COMMUNITY_SUBS_PATH = os.path.join(os.path.dirname(__file__), "community_vendor")
 
 # Settings
 translator_version = 'v1.0.2'

@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block title %}{{ metadata.display_title if metadata else activity.content_id }} - {{ super() }}{% endblock %}
+
+{% from "_subtitle_list_item.html" import render_subtitle_item %}
+{% from "_provider_subtitle_list_item.html" import render_provider_subtitle_item %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm mb-4">
+            <div class="poster-wrapper poster-wrapper-card"
+                 data-poster="{{ metadata.poster_url or '' }}">
+                <img class="poster-image card-img-top poster-img">
+                <div class="poster-fallback poster-fallback-card">
+                    <i class="fa fa-film"></i>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Content Information</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">
+                        <strong>Type:</strong> 
+                        <span class="badge {% if activity.content_type == 'movie' %}bg-info{% else %}bg-warning{% endif %}">
+                            {{ activity.content_type|capitalize }}
+                        </span>
+                    </li>
+                    <li class="list-group-item">
+                        <strong>ID:</strong> {{ activity.content_id }}
+                    </li>
+                    {% if activity.video_hash %}
+                    <li class="list-group-item">
+                        <strong>Video Hash:</strong> 
+                        <span class="text-monospace">{{ activity.video_hash }}</span>
+                    </li>
+                    {% endif %}
+                    {% if activity.video_filename %}
+                    <li class="list-group-item">
+                        <strong>Filename:</strong> 
+                        <span class="text-break">{{ activity.video_filename }}</span>
+                    </li>
+                    {% endif %}
+                    {% if season is not none %}
+                    <li class="list-group-item">
+                        <strong>Season:</strong> {{ season }}
+                    </li>
+                    {% endif %}
+                    {% if episode is not none %}
+                    <li class="list-group-item">
+                        <strong>Episode:</strong> {{ episode }}
+                    </li>
+                    {% endif %}
+                    {% if metadata %}
+                    {% if metadata.year %}
+                    <li class="list-group-item">
+                        <strong>Year:</strong> {{ metadata.year }}
+                    </li>
+                    {% endif %}
+                    {% if metadata.runtime %}
+                    <li class="list-group-item">
+                        <strong>Runtime:</strong> {{ metadata.runtime }} min
+                    </li>
+                    {% endif %}
+                    {% if metadata.genres %}
+                    <li class="list-group-item">
+                        <strong>Genres:</strong> 
+                        {% for genre in metadata.genres %}
+                        <span class="badge bg-secondary">{{ genre }}</span>
+                        {% endfor %}
+                    </li>
+                    {% endif %}
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                <h2 class="mb-0">
+                    {% if metadata and metadata.display_title %}
+                    {{ metadata.display_title }}
+                    {% else %}
+                    {{ activity.content_id }}
+                    {% endif %}
+                </h2>
+            </div>
+            {% if metadata and metadata.overview %}
+            <div class="card-body">
+                <h5>Overview</h5>
+                <p>{{ metadata.overview }}</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        {# Community Subtitles Section #}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Community Subtitles</h5>
+                <div class="text-end d-flex gap-2 justify-content-end">
+                    {% if has_any_user_selection %}
+                        <form method="POST" action="{{ url_for('subtitles.reset_selection', activity_id=activity.id) }}" class="d-inline-block">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to reset ALL your subtitle selections for this content?')">
+                                <i class="fas fa-times me-1"></i>Reset All Selections
+                            </button>
+                        </form>
+                    {% endif %}
+                    <a href="{{ url_for('subtitles.upload_subtitle', activity_id=activity.id) }}" class="btn btn-sm btn-success d-inline-block">
+                        <i class="fas fa-upload me-1"></i>Upload New
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {# Display Active Subtitle (either local or OpenSubtitle) for each preferred language #}
+                {% for lang_code in preferred_languages %}
+                    {% set active_details = active_details_by_lang.get(lang_code) %}
+                    {% set active_subtitle = active_details.active_subtitle if active_details else none %}
+                    {% set active_provider_details = active_details.active_provider_details if active_details else none %}
+                    {% set user_selection = active_details.user_selection if active_details else none %}
+                    {% set user_vote_value = active_details.user_vote_value if active_details else none %}
+                    {% set auto_selected = active_details.auto_selected if active_details else false %}
+
+                    <div class="list-group list-group-flush">
+                        <h6 class="list-group-item bg-light d-flex justify-content-between align-items-center">
+                            <span>Currently Selected ({{ LANGUAGE_DICT.get(lang_code, lang_code) }})</span>
+                            <div class="text-nowrap">
+                                {% if active_subtitle %}
+                                    {% if auto_selected %}
+                                    <span class="badge bg-info ms-1">Auto Selected</span>
+                                    {% else %}
+                                    <span class="badge bg-success ms-1">User Selected</span>
+                                    {% endif %}
+                                {% elif active_provider_details %}
+                                    <span class="badge bg-warning ms-1">Provider</span>
+                                    {% if auto_selected %}
+                                    <span class="badge bg-info ms-1">Auto Selected</span>
+                                    {% else %}
+                                    <span class="badge bg-success ms-1">User Selected</span>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </h6>
+                        {% if active_subtitle %}
+                            <div class="list-group-item active-subtitle">
+                                {{ render_subtitle_item(active_subtitle, user_votes, user_selection, activity.id, activity.video_hash, current_user, LANGUAGE_DICT, is_active_subtitle=true, get_provider=get_provider) }}
+                            </div>
+                        {% elif active_provider_details %}
+                            <div class="list-group-item active-subtitle">
+                                {% set provider_result = namespace(
+                                    provider_name=active_provider_details.provider_name,
+                                    subtitle_id=active_provider_details.subtitle_id or active_provider_details.details.file_id|string,
+                                    language=lang_code,
+                                    release_name=active_provider_details.release_name,
+                                    uploader=active_provider_details.uploader,
+                                    ai_translated=active_provider_details.ai_translated,
+                                    rating=active_provider_details.rating if active_provider_details.rating else None,
+                                    download_count=active_provider_details.download_count if active_provider_details.download_count else None,
+                                    hearing_impaired=active_provider_details.hearing_impaired if active_provider_details.hearing_impaired else False,
+                                    metadata={'hash_match': active_provider_details.moviehash_match or active_provider_details.hash_match, 'url': active_provider_details.url}
+                                ) %}
+                                {{ render_provider_subtitle_item(activity, provider_result, lang_code, active_provider_details, LANGUAGE_DICT, is_active_selection=true, get_provider=get_provider) }}
+                            </div>
+                        {% else %}
+                            <div class="p-3 text-muted">
+                                <small>No subtitle selected for this language.</small>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %} {# End loop for preferred_languages for "Currently Selected" #}
+
+                {# Display aggregated available subtitles #}
+                {% if all_subs_matching_hash %}
+                <div class="card shadow-sm mt-3 mx-2">
+                    <div class="card-header">
+                        <h6 class="mb-0">Subtitles Matching Video Hash ({{ preferred_languages_display }})</h6>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for subtitle in all_subs_matching_hash %}
+                            {{ render_subtitle_item(subtitle, user_votes, user_selection, activity.id, activity.video_hash, current_user, LANGUAGE_DICT, is_active_subtitle=(active_details_by_lang.get(subtitle.language) and active_details_by_lang.get(subtitle.language).active_subtitle and active_details_by_lang.get(subtitle.language).active_subtitle.id == subtitle.id), get_provider=get_provider) }}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if all_subs_no_hash %}
+                <div class="card shadow-sm mt-3 mx-2">
+                    <div class="card-header">
+                        <h6 class="mb-0">General Subtitles (No Hash, {{ preferred_languages_display }})</h6>
+                     </div>
+                    <div class="list-group list-group-flush">
+                        {% for subtitle in all_subs_no_hash %}
+                            {{ render_subtitle_item(subtitle, user_votes, user_selection, activity.id, activity.video_hash, current_user, LANGUAGE_DICT, is_active_subtitle=(active_details_by_lang.get(subtitle.language) and active_details_by_lang.get(subtitle.language).active_subtitle and active_details_by_lang.get(subtitle.language).active_subtitle.id == subtitle.id), get_provider=get_provider) }}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if all_subs_other_hash %}
+                <div class="card shadow-sm mt-3 mx-2">
+                    <div class="card-header">
+                        <h6 class="mb-0">Other Subtitles (Different Hash, {{ preferred_languages_display }})</h6>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for subtitle in all_subs_other_hash %}
+                            {{ render_subtitle_item(subtitle, user_votes, user_selection, activity.id, activity.video_hash, current_user, LANGUAGE_DICT, is_active_subtitle=(active_details_by_lang.get(subtitle.language) and active_details_by_lang.get(subtitle.language).active_subtitle and active_details_by_lang.get(subtitle.language).active_subtitle.id == subtitle.id), get_provider=get_provider) }}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if not active_details_by_lang and not all_subs_matching_hash and not all_subs_no_hash and not all_subs_other_hash and not provider_results_by_lang %}
+                <div class="p-4 text-center">
+                    <p class="mb-3">No community subtitles available for this content yet.</p>
+                    <a href="{{ url_for('subtitles.upload_subtitle', activity_id=activity.id) }}" class="btn btn-primary">
+                        <i class="fas fa-upload me-1"></i>Be the first to upload subtitles
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Provider Results Section - Displayed once for all languages #}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Provider Results</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                {% for lang_code, provider_results in provider_results_by_lang.items() %}
+                    {% if provider_results %}
+                        <h6 class="list-group-item bg-light mb-0">{{ LANGUAGE_DICT.get(lang_code, lang_code) }}</h6>
+                            {% for provider_item in provider_results %}
+                                {% set attrs = provider_item.attributes %}
+                                {% set file = attrs.files[0] if attrs.files else none %}
+                                {% if file %}
+                                    {% set provider_result = namespace(
+                                        provider_name=provider_item.provider_name,
+                                        subtitle_id=file.file_id|string,
+                                        language=attrs.language_3letter,
+                                        release_name=file.file_name,
+                                        uploader=attrs.uploader.name if attrs.uploader else none,
+                                        download_count=attrs.download_count,
+                                        rating=attrs.ratings,
+                                        ai_translated=attrs.ai_translated or attrs.machine_translated,
+                                        hearing_impaired=attrs.hearing_impaired,
+                                        metadata={'hash_match': attrs.moviehash_match, 'url': attrs.url, 'original_file_id': file.file_id}
+                                    ) %}
+                                    {% set active_details = active_details_by_lang.get(lang_code) %}
+                                    {% set active_provider_details = active_details.active_provider_details if active_details else none %}
+                                    {% set is_active = active_provider_details and active_provider_details.details.file_id|string == file.file_id|string %}
+                                    {{ render_provider_subtitle_item(activity, provider_result, lang_code, active_provider_details, LANGUAGE_DICT, is_active_selection=is_active, get_provider=get_provider) }}
+                                {% endif %}
+                            {% endfor %}
+
+                    {% endif %}
+                {% endfor %}
+                </div>
+                {% if not has_provider_results %}
+                    <div class="p-3 text-center text-muted">
+                        <p class="mb-0">No subtitles found from providers for your criteria and preferred languages.</p>
+                        <p class="mb-0"><a href="{{ url_for('main.account_settings') }}">Configure providers in your account settings</a> to see results here.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/voting.js') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.poster-wrapper').forEach(function(wrapper) {
+        const img = wrapper.querySelector('.poster-image');
+        const fallback = wrapper.querySelector('.poster-fallback');
+        const posterUrl = wrapper.dataset.poster;
+
+        if (posterUrl) {
+            img.src = posterUrl;
+
+            img.onload = function() {
+                this.classList.add('loaded');
+                fallback.classList.add('hidden');
+            };
+
+            img.onerror = function() {
+                this.style.display = 'none';
+            };
+        } else {
+            img.style.display = 'none';
+        }
+    });
+
+    // Handle pulsating effect for matching subtitle pairs
+    document.querySelectorAll('.list-group-item[data-language]').forEach(item => {
+        item.addEventListener('mouseover', function() {
+            const hoveredLang = this.dataset.language;
+            const hoveredSubtitleId = this.dataset.subtitleId;
+            const hoveredOpensubFileId = this.dataset.opensubFileId;
+
+            document.querySelectorAll('.list-group-item[data-language]').forEach(potentialMatch => {
+                if (potentialMatch.dataset.language === hoveredLang) {
+                    let isMatch = false;
+                    if (hoveredSubtitleId && potentialMatch.dataset.subtitleId === hoveredSubtitleId) {
+                        isMatch = true;
+                    } else if (hoveredOpensubFileId && potentialMatch.dataset.opensubFileId === hoveredOpensubFileId) {
+                        isMatch = true;
+                    }
+
+                    if (isMatch) {
+                        potentialMatch.classList.add('highlighted');
+                    }
+                }
+            });
+        });
+
+        item.addEventListener('mouseout', function() {
+            document.querySelectorAll('.list-group-item.highlighted').forEach(highlightedItem => {
+                highlightedItem.classList.remove('highlighted');
+            });
+        });
+    });
+        initVoting('{{ csrf_token() }}', '{{ url_for("subtitles.vote_subtitle", subtitle_id="SUBTITLE_ID", vote_type="VOTE_TYPE") }}');
+});
+</script>
+{% endblock %}

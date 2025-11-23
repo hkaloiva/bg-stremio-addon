@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "_form_helpers.html" import render_field, render_submit_button, render_checkbox_field %}
+
+{% block title %}Account Settings - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="mb-3">Account Settings</h1>
+        <p class="lead">
+            Manage your account preferences and settings.
+        </p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Language Preferences</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('main.account_settings') }}" novalidate>
+                    {{ lang_form.hidden_tag() }}
+                    
+                    {{ render_field(lang_form.preferred_languages) }}
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        This setting determines which languages will be used to search subtitles by the addon.
+                    </div>
+                    
+                    {{ render_submit_button(lang_form.submit_language) }}
+                </form>
+            </div>
+        </div>
+
+        <!-- Subtitle Providers -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Subtitle Providers</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Connect to external subtitle providers for enhanced search capabilities.</p>
+                
+                {% from "_provider_status.html" import render_provider_status %}
+                {% set all_providers = get_all_providers() %}
+                
+                {% for provider in all_providers %}
+                    {{ render_provider_status(provider, current_user) }}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">Security</h5>
+            </div>
+            <div class="card-body">
+                <p>Manage your account security settings:</p>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('auth.change_password') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-key me-2"></i>Change Password
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Account Information</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">
+                        <strong>Username:</strong> {{ current_user.username }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Email:</strong> {{ current_user.email }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Member Since:</strong> {{ current_user.created_at.strftime('%Y-%m-%d') }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Current Languages:</strong>
+                        {% if current_user.preferred_languages %}
+                            {% for lang_code in current_user.preferred_languages %}
+                                <span class="badge bg-secondary me-1">{{ LANGUAGE_DICT.get(lang_code, lang_code) }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">No languages selected</span>
+                        {% endif %}
+                    </li>
+
+                </ul>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Addon Installation</h5>
+            </div>
+            <div class="card-body">
+                <p>Need to install your addon in Stremio?</p>
+                <a href="{{ url_for('main.configure') }}" class="btn btn-primary d-block">Install Addon</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Initialize Bootstrap-select for the preferred_languages field
+    var preferredLanguagesSelect = document.getElementById('lang_form-preferred_languages');
+    if (preferredLanguagesSelect) {
+        if (typeof $(preferredLanguagesSelect).selectpicker === 'function') {
+            $(preferredLanguagesSelect).selectpicker();
+        } else {
+            console.warn('Bootstrap-select library not loaded or selectpicker function not found.');
+        }
+    }
+
+
+});
+</script>
+{% endblock %}

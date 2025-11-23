@@ -16,11 +16,9 @@ COPY requirements.txt .
 COPY bg_subtitles_app/requirements.txt bg_subtitles_app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Bundle stremio-community-subtitles inside this image (sqlite mode)
-RUN git clone https://github.com/skoruppa/stremio-community-subtitles.git /app/community_subs \
- && pip install --no-cache-dir -r /app/community_subs/requirements.txt \
- && mv /app/community_subs/app /app/community_subs/community_app \
- && sed -i 's/from app import/from community_app import/' /app/community_subs/run.py \
+# Bundle stremio-community-subtitles (vendored locally) inside this image (sqlite mode)
+COPY community_vendor /app/community_vendor
+RUN pip install --no-cache-dir -r /app/community_vendor/requirements.txt \
  && pip install --no-cache-dir "typing_extensions>=4.14.1"
 
 COPY . .
