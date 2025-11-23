@@ -617,7 +617,7 @@ async def proxy_subtitles(request: Request, path: str = ""):
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
         upstream = await client.request(request.method, target_url, params=params, content=data, headers=headers)
     # Filter hop-by-hop headers
-    excluded = {"content-encoding", "transfer-encoding", "connection"}
+    excluded = {"content-encoding", "transfer-encoding", "connection", "content-length"}
     resp_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded}
     return Response(content=upstream.content, status_code=upstream.status_code, headers=resp_headers)
 
