@@ -621,6 +621,11 @@ async def proxy_subtitles(request: Request, path: str = ""):
     resp_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded}
     return Response(content=upstream.content, status_code=upstream.status_code, headers=resp_headers)
 
+# Convenience redirect for community subtitles registration
+@app.get('/register')
+async def register_redirect():
+    return RedirectResponse(f"{SUBS_PROXY_BASE}/register")
+
 
 ### DASHBOARD ###
 
