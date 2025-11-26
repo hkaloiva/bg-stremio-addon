@@ -206,10 +206,10 @@ def read_sub(mov, year, normalized_fragment=None):
         enc_values = enc_values.encode('utf-8')
   log_my('Url: ', (url), 'Headers: ', (head), 'Values: ', (enc_values))
 
-  # Primary attempt over HTTPS (+ retries on mid-stream failures)
+  # Primary attempt over HTTP (SAB HTTPS often refuses), fallback to HTTPS if HTTP fails.
   for attempt in (1, 2, 3):
     try:
-      response, conn = _https_request("POST", "/index.php?", enc_values, head)
+      response, conn = _http_request("POST", "/index.php?", enc_values, head)
       ctype = (response.getheader('content-type') or '').split(';')[0]
       if response.status != 200 or ctype != 'text/html':
         try:
@@ -217,11 +217,18 @@ def read_sub(mov, year, normalized_fragment=None):
         except Exception:
           pass
         if attempt < 3:
-          # progressive backoff: 0.4s, then 0.8s
           import time as _t
           _t.sleep(0.4 * attempt)
           continue
-        return None
+        # HTTP failed; try HTTPS once before giving up
+        response, conn = _https_request("POST", "/index.php?", enc_values, head)
+        ctype = (response.getheader('content-type') or '').split(';')[0]
+        if response.status != 200 or ctype != 'text/html':
+          try:
+            conn.close()
+          except Exception:
+            pass
+          return None
       try:
         headers_dump = response.getheaders()
         log_my(headers_dump)
@@ -251,9 +258,9 @@ def read_sub(mov, year, normalized_fragment=None):
         import time as _t
         _t.sleep(0.4 * attempt)
         continue
-      # Final fallback: try plain HTTP once
+      # Final fallback: try HTTPS once more
       try:
-        response, conn = _http_request("POST", "/index.php?", enc_values, head)
+        response, conn = _https_request("POST", "/index.php?", enc_values, head)
         ctype = (response.getheader('content-type') or '').split(';')[0]
         if response.status != 200 or ctype != 'text/html':
           try:
@@ -326,9 +333,9 @@ def get_sub(id, sub_url, filename):
         import time as _t
         _t.sleep(0.3 * attempt)
         continue
-      # Fallback to HTTP once
+      # Fallback to HTTPS once
       try:
-        response, conn = _http_request("GET", path, None, head)
+        response, conn = _https_request("GET", path, None, head)
         if response.status != 200:
           try:
             conn.close()
