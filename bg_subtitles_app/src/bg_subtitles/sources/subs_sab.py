@@ -292,6 +292,7 @@ def get_sub(id, sub_url, filename):
   path = f"/index.php?act=download&attach_id={sub_url}"
   for attempt in (1, 2, 3):
     try:
+      # Try HTTPS first (downloads often require TLS), then fall back to HTTP once.
       response, conn = _https_request("GET", path, None, head)
       if response.status != 200:
         try:
@@ -333,9 +334,9 @@ def get_sub(id, sub_url, filename):
         import time as _t
         _t.sleep(0.3 * attempt)
         continue
-      # Fallback to HTTPS once
+      # Fallback to HTTP once
       try:
-        response, conn = _https_request("GET", path, None, head)
+        response, conn = _http_request("GET", path, None, head)
         if response.status != 200:
           try:
             conn.close()
