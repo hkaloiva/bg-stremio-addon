@@ -9,8 +9,10 @@ import time, random, threading, os
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .common import get_info, get_search_string, list_key, log_my, savetofile
-from . import Vlad00nMooo, subs_sab, subsland, unacs
+from . import Vlad00nMooo, subs_sab, subsland, unacs, opensubtitles
 from ..cache import TTLCache
+
+_ENABLE_OPENSUB = str(os.getenv("BG_SUBS_ENABLE_OPENSUBTITLES", "")).lower() in {"1", "true", "yes"}
 
 SOURCE_REGISTRY = {
     "unacs": unacs,
@@ -18,6 +20,8 @@ SOURCE_REGISTRY = {
     "subsland": subsland,
     "Vlad00nMooo": Vlad00nMooo,
 }
+if _ENABLE_OPENSUB:
+    SOURCE_REGISTRY["opensubtitles"] = opensubtitles
 
 DEFAULT_ENABLED = list(SOURCE_REGISTRY.keys())
 
@@ -184,6 +188,20 @@ def _invoke_source(source_id: str, module, item: Dict[str, str], query: str):
         out = module.read_sub(query, item.get("year", ""), fragment)
         log_my(f"[metrics] provider={source_id} duration_ms={(time.time()-t0)*1000:.0f} count={len(out or [])}")
         return out
+    if source_id == "opensubtitles":
+        try:
+            out = module.read_sub(
+                query=query,
+                year=item.get("year", ""),
+                fragment=fragment,
+                imdb_id=item.get("imdb_id") or item.get("id") or "",
+                language="bg",
+            )
+            log_my(f"[metrics] provider={source_id} duration_ms={(time.time()-t0)*1000:.0f} count={len(out or [])}")
+            return out
+        except Exception as exc:  # noqa: BLE001
+            log_my(f"[metrics] provider={source_id} error={exc}")
+            return None
     return None
 
 
@@ -194,6 +212,9 @@ def get_sub(source_id: str, sub_url: str, filename: Optional[str]):
     module = SOURCE_REGISTRY[source_id]
 
     try:
+        if source_id == "opensubtitles":
+            # sub_url is actually a file_id for OpenSubtitles
+            return opensubtitles.download(sub_url, fallback_name=filename)
         return module.get_sub(source_id, sub_url, filename)
     except Exception as exc:  # noqa: BLE001
         log_my(f"{source_id}.get_sub", exc)

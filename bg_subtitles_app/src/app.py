@@ -60,6 +60,9 @@ _INFUSE_PROVIDER_MAP = {
     "land": "subsland",
     "vlad00nmooo": "vlad00nmooo",
     "vlad": "vlad00nmooo",
+    "opensubtitles": "opensubtitles",
+    "opensubs": "opensubtitles",
+    "os": "opensubtitles",
 }
 _INFUSE_ALLOWED_PROVIDERS = set(_INFUSE_PROVIDER_MAP.values())
 

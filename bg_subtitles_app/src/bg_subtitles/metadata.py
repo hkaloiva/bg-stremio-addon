@@ -104,6 +104,8 @@ def build_scraper_item(media_type: str, raw_id: str) -> Optional[dict]:
         "tvshow": "",
         "season": "",
         "episode": "",
+        "imdb_id": tokens.base,
+        "id": tokens.base,
     }
 
     if media_type == "series":

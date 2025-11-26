@@ -713,42 +713,65 @@ async def get_subs(addon_url, path: str):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     return RedirectResponse(f"{addon_url}/subtitles/{path}")
 
-async def _enrich_streams_with_subtitles(streams: List[dict]) -> List[dict]:
+async def _enrich_streams_with_subtitles(
+    streams: List[dict],
+    media_type: Optional[str] = None,
+    item_id: Optional[str] = None,
+    request_base: Optional[str] = None,
+) -> List[dict]:
     if not streams:
         return streams
 
-    def _mark_bg_subs(stream: dict) -> None:
-        """Mark Bulgarian subtitles based on any known subtitle metadata."""
+    def _subtitle_langs_has_bg(raw_langs) -> bool:
         langs: List[str] = []
-        raw_langs = stream.get("subtitleLangs")
         if isinstance(raw_langs, str):
             langs.extend([lang.strip().lower() for lang in raw_langs.split(",") if lang])
         elif isinstance(raw_langs, list):
             langs.extend([str(lang).strip().lower() for lang in raw_langs if lang])
+        return any(l.startswith("bg") or l.startswith("bul") for l in langs)
+
+    def _mark_bg_subs(stream: dict) -> None:
+        """Mark Bulgarian subtitles based on any known subtitle metadata."""
+        raw_langs = stream.get("subtitleLangs")
+        langs: List[str] = []
+        if isinstance(raw_langs, str):
+            langs.extend([lang.strip().lower() for lang in raw_langs.split(",") if lang])
+        elif isinstance(raw_langs, list):
+            langs.extend([str(lang).strip().lower() for lang in raw_langs if lang])
+
         tracks = stream.get("embeddedSubtitles") or []
+        bg_in_embedded = False
         for track in tracks:
             lang = str((track or {}).get("lang") or "").strip().lower()
             if lang:
                 langs.append(lang)
+            if lang.startswith("bg") or lang.startswith("bul"):
+                bg_in_embedded = True
+
         has_bg = any(l.startswith("bg") or l.startswith("bul") for l in langs)
         if not has_bg:
             return
+
         stream["subs_bg"] = True
         tags = stream.get("visualTags") or []
         if "bg-subs" not in tags:
             tags.append("bg-subs")
+        if bg_in_embedded and "bg-embedded" not in tags:
+            tags.append("bg-embedded")
         stream["visualTags"] = tags
-        # Inject visual hints into name/description so upstream formatting limitations are bypassed
+
+        # Inject visual hints into name/description so upstream formatting limitations are bypassed.
+        flag = "🇧🇬📀" if bg_in_embedded else "🇧🇬"
         try:
             name = str(stream.get("name") or "")
-            if "🇧🇬" not in name:
-                stream["name"] = f"🇧🇬 {name}".strip()
+            if flag not in name:
+                stream["name"] = f"{flag} {name}".strip()
         except Exception:
             pass
         try:
             desc = str(stream.get("description") or "")
-            if "🇧🇬" not in desc:
-                stream["description"] = f"{desc} ⚑ 🇧🇬".strip()
+            if flag not in desc:
+                stream["description"] = f"{desc} ⚑ {flag}".strip()
         except Exception:
             pass
 
@@ -815,7 +838,68 @@ async def _enrich_streams_with_subtitles(streams: List[dict]) -> List[dict]:
             stream["embeddedSubtitles"] = tracks
         # Re-apply marker after probe results
         _mark_bg_subs(stream)
-    return streams
+
+    # Query BG subtitles scraper once per title to tag streams lacking embedded BG
+    bg_scraped = False
+    if media_type and item_id and request_base:
+        try:
+            url = f"{request_base}/bg/subtitles/{media_type}/{item_id}.json?limit=1"
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results = data if isinstance(data, list) else data.get("subtitles") or data.get("streams") or []
+                    if results:
+                        bg_scraped = True
+        except Exception:
+            bg_scraped = False
+
+    if bg_scraped:
+        for stream in streams:
+            # Skip if already flagged via embedded/meta
+            if stream.get("subs_bg") or ("bg-subs" in (stream.get("visualTags") or [])):
+                continue
+            stream["subs_bg"] = True
+            tags = stream.get("visualTags") or []
+            if "bg-subs" not in tags:
+                tags.append("bg-subs")
+            if "bg-scraped" not in tags:
+                tags.append("bg-scraped")
+            stream["visualTags"] = tags
+            try:
+                name = str(stream.get("name") or "")
+                if "🇧🇬" not in name:
+                    stream["name"] = f"🇧🇬 {name}".strip()
+            except Exception:
+                pass
+            try:
+                desc = str(stream.get("description") or "")
+                if "🇧🇬" not in desc:
+                    stream["description"] = f"{desc} ⚑ 🇧🇬".strip()
+            except Exception:
+                pass
+
+    # Prioritize streams: 1) any embedded subtitles present 2) BG subtitle match 3) everything else
+    def _priority(stream: dict) -> int:
+        tags = stream.get("visualTags") or []
+        has_embedded = bool(stream.get("embeddedSubtitles"))
+        has_bg_embedded = "bg-embedded" in tags
+        has_scraped_bg = "bg-scraped" in tags
+        has_bg = bool(
+            stream.get("subs_bg")
+            or ("bg-subs" in tags)
+            or _subtitle_langs_has_bg(stream.get("subtitleLangs"))
+        )
+        if has_bg_embedded:
+            return 0  # Embedded BG subs
+        if has_scraped_bg or (has_bg and not has_embedded):
+            return 1  # BG via scraper/metadata only
+        if has_embedded:
+            return 2  # Embedded (non-BG)
+        return 3  # Everything else
+
+    indexed_sorted = sorted(enumerate(streams), key=lambda pair: (_priority(pair[1]), pair[0]))
+    return [stream for _, stream in indexed_sorted]
 
 
 # Stream proxy with subtitle metadata enrichment
@@ -837,7 +921,22 @@ async def get_stream(addon_url, user_settings: str, path: str, request: Request)
 
     streams = payload.get("streams")
     if isinstance(streams, list):
-        payload["streams"] = await _enrich_streams_with_subtitles(streams)
+        # Extract media_type and item_id from path for scraper lookup
+        media_type = None
+        item_id = None
+        try:
+            parts = path.split("/")
+            if len(parts) >= 2:
+                media_type = parts[0]
+                raw_id = parts[1]
+                if raw_id.endswith(".json"):
+                    raw_id = raw_id[:-5]
+                item_id = raw_id
+        except Exception:
+            media_type = None
+            item_id = None
+        request_base = str(request.base_url).rstrip("/")
+        payload["streams"] = await _enrich_streams_with_subtitles(streams, media_type, item_id, request_base)
 
     return JSONResponse(content=payload, headers=cloudflare_cache_headers)
 

@@ -393,6 +393,8 @@ async def fetch_all_providers_async(
         return provider_stats.setdefault(source, {"fetched": 0, "deduped": 0, "final": 0, "failed": 0, "retries": 0, "timeouts": 0})
 
     async with httpx.AsyncClient(timeout=None) as client:
+        imdb_token = item.get("imdb_id") or item.get("id") or ""
+        fragment = item.get("normalized_fragment", "")
         for source_id in sources:
             module = nsub_module.SOURCE_REGISTRY[source_id]
             query = nsub_module._normalise_for_source(source_id, item, search_str)
@@ -421,6 +423,8 @@ async def fetch_all_providers_async(
                     breaker_ttl=breaker_ttl,
                     provider_lock=provider_locks[source_id],
                     stats=_stat(source_id),
+                    imdb_token=imdb_token,
+                    fragment=fragment,
                 )
             )
 
@@ -453,6 +457,8 @@ async def _run_provider_task(
     breaker_ttl: Optional[float],
     provider_lock: asyncio.Semaphore,
     stats: Dict[str, int],
+    imdb_token: str = "",
+    fragment: str = "",
 ) -> Tuple[str, str, Optional[List[Dict]]]:
     start = time.perf_counter()
     success = False
@@ -465,7 +471,16 @@ async def _run_provider_task(
         for attempt in range(_PROVIDER_RETRIES + 1):
             try:
                 async with provider_lock:
-                    if hasattr(module, "read_sub_async"):
+                    if source_id == "opensubtitles":
+                        call = asyncio.to_thread(
+                            module.read_sub,
+                            query,
+                            item_year,
+                            fragment,
+                            imdb_token,
+                            "bg",
+                        )
+                    elif hasattr(module, "read_sub_async"):
                         call = module.read_sub_async(client, query, item_year)
                     else:
                         call = asyncio.to_thread(module.read_sub, query, item_year)
@@ -569,6 +584,8 @@ async def search_subtitles_async(
                     "tvshow": "",
                     "season": "",
                     "episode": "",
+                    "imdb_id": raw_id if raw_id.lower().startswith("tt") else "",
+                    "id": raw_id,
                 }
             else:
                 if needs_title:
