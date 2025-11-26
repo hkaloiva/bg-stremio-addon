@@ -9,6 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     ca-certificates \
     git \
+    libfreetype6 \
+    libfontconfig1 \
+    curl \
+    ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -24,4 +28,5 @@ RUN pip install --no-cache-dir -r /app/community_vendor/requirements.txt \
 COPY . .
 
 ENV PORT=8080
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8080", "main:app"]
+RUN chmod +x /app/entrypoint.sh
+CMD ["/app/entrypoint.sh"]

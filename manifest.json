@@ -1,7 +1,7 @@
 {
-    "id": "com.toast.translator",
-    "version": "1.0.2",
-    "name": "Toast Translator",
+   "id": "com.toast.translator",
+   "version": "1.0.5",
+   "name": "Toast Translator",
     "description": "Translator for catalog addons!",
     "logo": "https://i.imgur.com/1904KDj.png",
     "catalogs": [],

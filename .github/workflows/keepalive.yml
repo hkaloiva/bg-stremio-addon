@@ -1,0 +1,19 @@
+name: Keep Toast Translator Warm
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          URL="https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/healthz"
+          http_code=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          if [ "$http_code" != "200" ]; then
+            echo "Health check failed with status $http_code"
+            exit 1
+          fi

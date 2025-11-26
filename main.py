@@ -5,6 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from cache import Cache
+import stream_probe
+import time
 from anime import kitsu, mal
 from anime import anime_mapping
 from providers import letterboxd
@@ -19,20 +21,14 @@ import base64
 import json
 import os
 import zipfile
-import shutil
 import sys
 import urllib.parse
 from pathlib import Path
-import importlib.util
-from starlette.middleware.wsgi import WSGIMiddleware
-
 # Ensure bundled bg_subtitles is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
-# Ensure community subtitles is importable (vendored into /app/community_vendor)
-COMMUNITY_SUBS_PATH = os.path.join(os.path.dirname(__file__), "community_vendor")
 
 # Settings
-translator_version = 'v1.0.2'
+translator_version = 'v1.0.5'
 DEFAULT_LANGUAGE = "bg-BG"
 FORCE_PREFIX = False
 FORCE_META = False
@@ -42,7 +38,11 @@ TRANSLATE_CATALOG_NAME = False
 REQUEST_TIMEOUT = 120
 COMPATIBILITY_ID = ['tt', 'kitsu', 'mal']
 ENABLE_ANIME = False
-SUBS_PROXY_BASE = os.getenv("SUBS_PROXY_BASE", "/subs")
+SUBS_PROXY_BASE = os.getenv("SUBS_PROXY_BASE", "https://stremio-community-subtitles.top").rstrip("/")
+STREAM_SUBS_MAX_STREAMS = int(os.getenv("STREAM_SUBS_MAX_STREAMS", "4"))
+RD_TOKEN = os.getenv("RD_TOKEN") or os.getenv("REALDEBRID_TOKEN") or "EIWFM2CK35TX3MTMFPV6D7DNJIXQFIZDWDCHD5ZFL5A3ELPKBR5A"
+RD_POLL_MAX_SECONDS = int(os.getenv("RD_POLL_MAX_SECONDS", "25"))
+RD_POLL_INTERVAL = float(os.getenv("RD_POLL_INTERVAL", "2.5"))
 
 # ENV file
 #from dotenv import load_dotenv
@@ -88,6 +88,7 @@ def open_all_cache():
     open_cache()
     translator.open_cache()
     letterboxd.open_cache()
+    stream_probe.open_cache()
 
 def close_all_cache():
     kitsu.close_cache()
@@ -97,6 +98,101 @@ def close_all_cache():
     close_cache()
     translator.close_cache()
     letterboxd.close_cache()
+    stream_probe.close_cache()
+
+
+# ---------------------------------------------------------------------------
+# Real-Debrid resolution for magnet-only streams
+# ---------------------------------------------------------------------------
+async def _rd_unrestrict(client: httpx.AsyncClient, link: str) -> Optional[str]:
+    try:
+        resp = await client.post(
+            "https://api.real-debrid.com/rest/1.0/unrestrict/link",
+            data={"link": link},
+            headers={"Authorization": f"Bearer {RD_TOKEN}"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+        return data.get("download")
+    except Exception:
+        return None
+
+
+async def _rd_poll_info(client: httpx.AsyncClient, torrent_id: str) -> Optional[Dict]:
+    try:
+        resp = await client.get(
+            f"https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}",
+            headers={"Authorization": f"Bearer {RD_TOKEN}"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        if resp.status_code >= 400:
+            return None
+        return resp.json()
+    except Exception:
+        return None
+
+
+async def _rd_select_file(client: httpx.AsyncClient, torrent_id: str, file_idx: int) -> None:
+    try:
+        await client.post(
+            f"https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{torrent_id}",
+            data={"files": str(file_idx)},
+            headers={"Authorization": f"Bearer {RD_TOKEN}"},
+            timeout=REQUEST_TIMEOUT,
+        )
+    except Exception:
+        return
+
+
+async def _resolve_with_rd(info_hash: str, file_idx: Optional[int]) -> Optional[str]:
+    if not RD_TOKEN:
+        return None
+    magnet = f"magnet:?xt=urn:btih:{info_hash}"
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            # Add magnet
+            add_resp = await client.post(
+                "https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
+                data={"magnet": magnet},
+                headers={"Authorization": f"Bearer {RD_TOKEN}"},
+            )
+            if add_resp.status_code >= 400:
+                return None
+            torrent_id = add_resp.json().get("id")
+            if not torrent_id:
+                return None
+
+            # Select desired file if provided
+            if file_idx is not None:
+                await _rd_select_file(client, torrent_id, file_idx)
+
+            # Poll for availability and links
+            deadline = time.time() + RD_POLL_MAX_SECONDS
+            links: List[str] = []
+            while time.time() < deadline:
+                info = await _rd_poll_info(client, torrent_id)
+                if not info:
+                    await asyncio.sleep(RD_POLL_INTERVAL)
+                    continue
+                links = info.get("links") or []
+                status = info.get("status") or ""
+                if links:
+                    break
+                if status in {"magnet_error", "error", "virus", "dead"}:
+                    return None
+                await asyncio.sleep(RD_POLL_INTERVAL)
+
+            if not links:
+                return None
+
+            # Unrestrict first link
+            direct = await _rd_unrestrict(client, links[0])
+            return direct or links[0]
+    except Exception:
+        return None
+    return None
 
 # Server start
 @asynccontextmanager
@@ -127,46 +223,21 @@ except Exception as exc:
     import logging
     logging.getLogger("uvicorn.error").error("Failed to mount bg subtitles app: %s", exc)
 
-# Mount community subtitles (local clone) under /subs
-try:
-    comm_root = os.path.join(os.path.dirname(__file__), "community_subs")
-    bg_path = os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src")
-    removed_bg = False
-    if bg_path in sys.path:
-        sys.path.remove(bg_path)
-        removed_bg = True
-    if comm_root not in sys.path:
-        sys.path.insert(0, comm_root)
-    comm_app_path = os.path.join(comm_root, "community_app", "__init__.py")
-    comm_run_path = os.path.join(comm_root, "run.py")
-
-    # Preload community_subs app module (renamed to community_app in Docker build)
-    comm_app_spec = importlib.util.spec_from_file_location("community_app", comm_app_path)
-    if not comm_app_spec or not comm_app_spec.loader:
-        raise ImportError("community_subs community_app module not found")
-    comm_app_module = importlib.util.module_from_spec(comm_app_spec)
-    comm_app_spec.loader.exec_module(comm_app_module)
-    sys.modules["community_app"] = comm_app_module
-
-    # Now load run.py that imports community_app
-    spec = importlib.util.spec_from_file_location("community_subs_run", comm_run_path)
-    if not spec or not spec.loader:
-        raise RuntimeError("cannot load community_subs run.py")
-    community_run = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(community_run)
-    community_app = getattr(community_run, "app", None)
-    if community_app:
-        app.mount("/subs", WSGIMiddleware(community_app))
-        print("[init] mounted community subtitles at /subs")
-    else:
-        raise RuntimeError("community_subs app not found")
-
-    if removed_bg:
-        sys.path.insert(1, bg_path)
-except Exception as exc:
-    import logging
-    logging.getLogger("uvicorn.error").error("Failed to mount community subtitles app: %s", exc)
-
+# Community subtitles integration removed per request; leave placeholder for future re-enable
+# Lightweight reverse proxy to stremio-community-subtitles to avoid breaking existing clients on /subs
+@app.api_route('/subs', methods=['GET'])
+@app.api_route('/subs/{path:path}', methods=['GET', 'POST'])
+async def proxy_subtitles(request: Request, path: str = ""):
+    target_url = f"{SUBS_PROXY_BASE}/{path}".rstrip("/")
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    data = await request.body()
+    params = dict(request.query_params)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
+        upstream = await client.request(request.method, target_url, params=params, content=data, headers=headers)
+    excluded = {"content-encoding", "transfer-encoding", "connection"}
+    resp_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded}
+    return Response(content=upstream.content, status_code=upstream.status_code, headers=resp_headers)
 stremio_headers = {
     'connection': 'keep-alive', 
     'user-agent': 'Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.2 Chrome/83.0.4103.122 Safari/537.36 StremioShell/4.4.168', 
@@ -642,11 +713,133 @@ async def get_subs(addon_url, path: str):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     return RedirectResponse(f"{addon_url}/subtitles/{path}")
 
-# Stream redirect
+async def _enrich_streams_with_subtitles(streams: List[dict]) -> List[dict]:
+    if not streams:
+        return streams
+
+    def _mark_bg_subs(stream: dict) -> None:
+        """Mark Bulgarian subtitles based on any known subtitle metadata."""
+        langs: List[str] = []
+        raw_langs = stream.get("subtitleLangs")
+        if isinstance(raw_langs, str):
+            langs.extend([lang.strip().lower() for lang in raw_langs.split(",") if lang])
+        elif isinstance(raw_langs, list):
+            langs.extend([str(lang).strip().lower() for lang in raw_langs if lang])
+        tracks = stream.get("embeddedSubtitles") or []
+        for track in tracks:
+            lang = str((track or {}).get("lang") or "").strip().lower()
+            if lang:
+                langs.append(lang)
+        has_bg = any(l.startswith("bg") or l.startswith("bul") for l in langs)
+        if not has_bg:
+            return
+        stream["subs_bg"] = True
+        tags = stream.get("visualTags") or []
+        if "bg-subs" not in tags:
+            tags.append("bg-subs")
+        stream["visualTags"] = tags
+        # Inject visual hints into name/description so upstream formatting limitations are bypassed
+        try:
+            name = str(stream.get("name") or "")
+            if "🇧🇬" not in name:
+                stream["name"] = f"🇧🇬 {name}".strip()
+        except Exception:
+            pass
+        try:
+            desc = str(stream.get("description") or "")
+            if "🇧🇬" not in desc:
+                stream["description"] = f"{desc} ⚑ 🇧🇬".strip()
+        except Exception:
+            pass
+
+    # Attempt to resolve magnet-only streams via Real-Debrid to obtain a direct URL for probing
+    for stream in streams:
+        if stream.get("url"):
+            continue
+        info_hash = stream.get("infoHash") or stream.get("info_hash")
+        if not info_hash:
+            continue
+        try:
+            file_idx = None
+            raw_idx = stream.get("fileIdx")
+            if raw_idx is not None:
+                try:
+                    file_idx = int(raw_idx)
+                except Exception:
+                    file_idx = None
+            resolved = await _resolve_with_rd(info_hash, file_idx)
+            if resolved:
+                stream["url"] = resolved
+                # Mark as resolved for downstream awareness
+                stream.setdefault("behaviorHints", {})
+                stream["behaviorHints"]["rdResolved"] = True
+        except Exception:
+            continue
+
+    # Honor any subtitle metadata already present (e.g., upstream provided subtitleLangs/embeddedSubtitles)
+    for stream in streams:
+        _mark_bg_subs(stream)
+
+    tasks = []
+    targets = []
+    for stream in streams:
+        url = stream.get("url")
+        if not url or not url.lower().startswith(("http://", "https://")):
+            continue
+        if len(targets) >= STREAM_SUBS_MAX_STREAMS:
+            break
+        targets.append(stream)
+        tasks.append(asyncio.create_task(stream_probe.probe(url)))
+
+    if not tasks:
+        return streams
+
+    results = await asyncio.gather(*tasks)
+    for stream, meta in zip(targets, results):
+        if not meta:
+            continue
+        langs = [lang for lang in (meta.get("langs") or []) if lang]
+        has_bg_subs = any(l.startswith("bg") or l.startswith("bul") for l in langs)
+        if langs:
+            stream["subtitleLangs"] = ",".join(langs)
+            for lang in langs:
+                stream[f"subs_{lang}"] = True
+            # Also push a visual tag for Bulgarian subs so formatters can detect it using built-in fields
+            if has_bg_subs:
+                tags = stream.get("visualTags") or []
+                if "bg-subs" not in tags:
+                    tags.append("bg-subs")
+                stream["visualTags"] = tags
+        tracks = meta.get("tracks") or []
+        if tracks:
+            stream["embeddedSubtitles"] = tracks
+        # Re-apply marker after probe results
+        _mark_bg_subs(stream)
+    return streams
+
+
+# Stream proxy with subtitle metadata enrichment
 @app.get('/{addon_url}/{user_settings}/stream/{path:path}')
-async def get_subs(addon_url, path: str):
+async def get_stream(addon_url, user_settings: str, path: str, request: Request):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
-    return RedirectResponse(f"{addon_url}/stream/{path}")
+    query = dict(request.query_params)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
+        upstream = await client.get(f"{addon_url}/stream/{path}", params=query)
+
+    if upstream.status_code >= 400:
+        return Response(status_code=upstream.status_code, content=upstream.content, headers=cloudflare_cache_headers)
+
+    try:
+        payload = upstream.json()
+    except Exception:
+        # Fallback to raw response if upstream is not JSON
+        return Response(status_code=upstream.status_code, content=upstream.content, headers=cloudflare_cache_headers, media_type=upstream.headers.get("content-type"))
+
+    streams = payload.get("streams")
+    if isinstance(streams, list):
+        payload["streams"] = await _enrich_streams_with_subtitles(streams)
+
+    return JSONResponse(content=payload, headers=cloudflare_cache_headers)
 
 ### DASHBOARD ###
 

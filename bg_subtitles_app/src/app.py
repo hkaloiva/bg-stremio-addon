@@ -14,7 +14,8 @@ from urllib.parse import unquote, urlencode
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, RedirectResponse
+from urllib.parse import quote, urlencode
 
 from bg_subtitles.service import (
     DEFAULT_FORMAT,
@@ -45,6 +46,22 @@ try:
     _LABEL_DEBUG_ENABLED = ((os.getenv("BG_SUBS_DEBUG_LABELS") or "").strip().lower() in {"1", "true", "yes"})
 except Exception:
     _LABEL_DEBUG_ENABLED = False
+# Default to CRLF normalization for SRT output to keep clients (including Infuse) consistent
+os.environ.setdefault("BG_SUBS_SRT_CRLF", "1")
+
+# Canonical map of Infuse-facing provider identifiers to internal providers (Bulgarian-only)
+_INFUSE_PROVIDER_MAP = {
+    "subs.sab": "subs_sab",
+    "subs_sab": "subs_sab",
+    "sab": "subs_sab",
+    "subsunacs": "unacs",
+    "unacs": "unacs",
+    "subsland": "subsland",
+    "land": "subsland",
+    "vlad00nmooo": "vlad00nmooo",
+    "vlad": "vlad00nmooo",
+}
+_INFUSE_ALLOWED_PROVIDERS = set(_INFUSE_PROVIDER_MAP.values())
 
 # Debug logging toggle for richer router/download diagnostics
 def _debug_enabled() -> bool:
@@ -867,7 +884,8 @@ def _subtitle_download(request: Request, token: str) -> Response:
 
     # MIME type selection
     if fmt == "srt":
-        srt_mime = os.getenv("BG_SUBS_SRT_MIME") or ("application/x-subrip" if is_ios else "text/plain")
+        # Prefer plain/text with charset by default; Infuse can reject uncommon MIME types.
+        srt_mime = os.getenv("BG_SUBS_SRT_MIME") or "text/plain; charset=utf-8"
         media_type = srt_mime
     elif fmt in {"sub", "txt", "ass", "ssa"}:
         media_type = "text/plain"
@@ -939,6 +957,9 @@ def _subtitle_download(request: Request, token: str) -> Response:
             # Fall back to full response on parse errors
             pass
 
+    # Add length for clients that expect it on full responses
+    headers["Content-Length"] = str(len(content))
+
     resp = Response(content=content, media_type=_with_charset(media_type, encoding), headers=headers)
     if _debug_enabled():
         try:
@@ -953,6 +974,166 @@ def _subtitle_download(request: Request, token: str) -> Response:
         except Exception:
             pass
     return resp
+
+
+def _map_infuse_provider(raw: str) -> Optional[str]:
+    key = str(raw or "").strip().lower()
+    return _INFUSE_PROVIDER_MAP.get(key)
+
+
+def _request_base(request: Request) -> str:
+    """Build scheme://host:port from incoming request."""
+    try:
+        proto = request.headers.get("x-forwarded-proto") or request.headers.get("X-Forwarded-Proto")
+    except Exception:
+        proto = None
+    try:
+        host = request.headers.get("x-forwarded-host") or request.headers.get("X-Forwarded-Host")
+    except Exception:
+        host = None
+    try:
+        base = f"{request.url.scheme}://{request.url.netloc}"
+    except Exception:
+        base = ""
+    if host:
+        # Honor forwarded host when available (useful behind reverse proxies)
+        parts = base.split("://", 1)
+        scheme = proto or parts[0] if len(parts) == 2 else (proto or "http")
+        base = f"{scheme}://{host}"
+    elif proto and base.startswith("http://"):
+        # Respect forwarded proto for TLS-terminated setups
+        base = base.replace("http://", f"{proto}://", 1)
+    return base.rstrip("/")
+
+
+def _infuse_base_url(request: Request) -> str:
+    """Choose the public-facing base for Infuse callbacks."""
+    try:
+        env_base = os.getenv("BG_INFUSE_PUBLIC_BASE") or os.getenv("BG_SUBS_PUBLIC_BASE")
+    except Exception:
+        env_base = None
+    if env_base:
+        return env_base.rstrip("/")
+    base = _request_base(request) or "http://localhost:7080"
+    # Avoid loopback/unspecified hosts for Infuse (iOS blocks them). Prefer host header or client IP.
+    loopback_markers = ("127.0.0.1", "localhost", "0.0.0.0")
+    if any(mark in base for mark in loopback_markers):
+        try:
+            host_hdr = request.headers.get("host") or request.headers.get("Host")
+        except Exception:
+            host_hdr = None
+        if host_hdr:
+            base = f"{request.url.scheme}://{host_hdr}"
+        else:
+            try:
+                client_host = request.client.host if request.client else None
+            except Exception:
+                client_host = None
+            if client_host:
+                # Default port 7080 unless forwarded host already included it.
+                port = request.url.port or 7080
+                base = f"{request.url.scheme}://{client_host}:{port}"
+    return base.rstrip("/")
+
+
+@app.get("/infuse-link")
+async def infuse_link(
+    request: Request,
+    url: str = Query(..., description="Stream URL (http/https)"),
+    imdb: str = Query(..., description="IMDb id or video identifier"),
+    type: str = Query("movie", description="media type: movie or series"),
+    redirect: bool = Query(False, description="If true, redirect to Infuse deep link"),
+):
+    """Build an Infuse deep link with all BG subtitle providers attached."""
+    stream_url = (url or "").strip()
+    if not stream_url or not (stream_url.startswith("http://") or stream_url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="stream url must start with http(s)")
+
+    imdb_id = (imdb or "").strip()
+    if not imdb_id or not re.match(r"^[A-Za-z0-9:_\\-\\.]+$", imdb_id):
+        raise HTTPException(status_code=400, detail="imdb id is required and must be alphanumeric")
+
+    media_type = (type or "movie").strip().lower()
+    if media_type not in {"movie", "series"}:
+        media_type = "movie"
+
+    # Infuse currently behaves best with a single external subtitle URL.
+    # Keep only the top-priority provider to maximize chance Infuse shows it.
+    providers = ["subsunacs"]
+    # Infuse is finicky about query params on subtitle URLs; build a clean path-only URL.
+    public_base = _infuse_base_url(request)
+    sub_urls = [
+        f"{public_base}/bg/subtitle/{quote(imdb_id, safe='')}/{p}.srt"
+        for p in providers
+    ]
+
+    # Build query: url=<stream>&sub=<...>&sub=<...>
+    query_parts = [("url", stream_url)]
+    for s in sub_urls:
+        query_parts.append(("sub", s))
+    # Use strict percent-encoding (no spaces as '+') for Infuse compatibility.
+    infuse_url = "infuse://x-callback-url/play?" + urlencode(query_parts, quote_via=quote)
+
+    debug = {
+        "infuse_url": infuse_url,
+        "stream_url": stream_url,
+        "subtitle_urls": sub_urls,
+        "imdb": imdb_id,
+        "providers": providers,
+        "type": media_type,
+        "request_base": _request_base(request),
+    }
+
+    if redirect:
+        return RedirectResponse(url=infuse_url, status_code=307)
+    return JSONResponse(content=debug)
+
+
+@app.get("/subtitle/{video_id}/{source}.srt")
+async def serve_infuse_subtitle(
+    request: Request,
+    video_id: str,
+    source: str,
+    type: str = Query("movie", description="media type: movie or series"),
+) -> Response:
+    """
+    Infuse-friendly route: predictable path shape that reuses the token pipeline.
+    """
+    target = _map_infuse_provider(source)
+    if not target or target not in _INFUSE_ALLOWED_PROVIDERS:
+        raise HTTPException(status_code=404, detail="Unknown subtitle provider")
+
+    try:
+        media_type = (type or "").strip().lower()
+        # Infer series when imdb id includes season/episode segments to avoid query params on the URL.
+        if not media_type:
+            media_type = "series" if ":" in video_id else "movie"
+        if media_type not in {"movie", "series"}:
+            media_type = "movie"
+        results = await search_subtitles_async(media_type, video_id, per_source=1, player=None)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Infuse subtitle search failed for %s: %s", video_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to search subtitles") from exc
+
+    match = None
+    for entry in results or []:
+        entry_source = str(entry.get("source") or "").lower()
+        if entry_source not in _INFUSE_ALLOWED_PROVIDERS:
+            continue
+        if entry_source == target:
+            match = entry
+            break
+
+    if not match:
+        raise HTTPException(status_code=404, detail="Subtitle not found for provider")
+
+    token = match.get("token")
+    if not token:
+        raise HTTPException(status_code=502, detail="Subtitle token missing")
+
+    return _subtitle_download(request, str(token))
 
 
 @app.get("/subtitle/{token}.srt")

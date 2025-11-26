@@ -133,6 +133,7 @@ async def build_metadata(imdb_id: str, type: str, language: str, tmdb_key: str):
 async def series_build_episodes(client: httpx.AsyncClient, imdb_id: str, tmdb_id: str, seasons: list, tvdb_series_id: int, tmdb_episodes_count: int, language: str, tmdb_key: str) -> list:
     tasks = []
     videos = []
+    imdb_id = imdb_id or ""
 
     # Fetch TMDB request for seasons details
     for season in seasons:
@@ -141,7 +142,7 @@ async def series_build_episodes(client: httpx.AsyncClient, imdb_id: str, tmdb_id
     tmdb_seasons = await asyncio.gather(*tasks)
 
     # Anime tvdb mapping
-    if ('kitsu' in imdb_id or 'mal' in imdb_id or imdb_id in kitsu.imdb_ids_map) and imdb_id not in TMDB_EXCEPTIONS:
+    if imdb_id and ('kitsu' in imdb_id or 'mal' in imdb_id or imdb_id in kitsu.imdb_ids_map) and imdb_id not in TMDB_EXCEPTIONS:
         # Use TVDB data
 
         # Extract pre translated episodes
