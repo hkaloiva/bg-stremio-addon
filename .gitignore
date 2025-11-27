@@ -1,6 +1,5 @@
 .env
 __pycache__/
-Dockerfile
 backup.txt
 cache/
 test/

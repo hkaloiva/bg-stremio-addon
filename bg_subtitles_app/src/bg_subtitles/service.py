@@ -28,11 +28,14 @@ from .sources import opensubtitles as opensubtitles_source
 from .sources import nsub as nsub_module
 from .sources.common import get_search_string, REQUEST_ID, _normalize_query
 
-log = logging.getLogger("bg_subtitles.service")
+from .constants import (
+    DEFAULT_FORMAT,
+    LANG_ISO639_2,
+    LANGUAGE,
+    PROVIDER_LABELS,
+)
 
-LANGUAGE = "Bulgarian"
-LANG_ISO639_2 = "bul"
-DEFAULT_FORMAT = "srt"
+log = logging.getLogger("bg_subtitles.service")
 
 # -----------------------------------------
 # Ranking weights (env‑tunable, defaults preserve current behavior)
@@ -92,14 +95,6 @@ P_EDITION_MISSING = _wf("BG_SUBS_P_EDITION_MISSING", -3.0)
 P_BUNDLE_MOVIE = _wf("BG_SUBS_P_BUNDLE_MOVIE", -18.0)
 P_POOR_SOURCE = _wf("BG_SUBS_P_POOR_SOURCE", -25.0)
 W_SMART_MULT = _wf("BG_SUBS_W_SMART_MULT", 8.0)
-
-PROVIDER_LABELS = {
-    "unacs": "UNACS",
-    "subs_sab": "SAB",
-    "subsland": "LAND",
-    "Vlad00nMooo": "VLA",
-    "opensubtitles": "OpenSubtitles",
-}
 
 COLOR_TAG_RE = re.compile(r"\[/?COLOR[^\]]*\]", re.IGNORECASE)
 STYLE_TAG_RE = re.compile(r"\[/?[BIU]\]", re.IGNORECASE)
