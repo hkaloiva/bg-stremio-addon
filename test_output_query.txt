@@ -1,0 +1,5 @@
+INFO:bg_subtitles.sources.opensubtitles:opensubtitles.read_sub query=Jingle Bell Heist imdb_id= imdb_token= year=2022 lang=bg
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles query search ok status=200 items=0
+Testing OpenSubtitles Provider...
+Searching for Query: 'Jingle Bell Heist' Year: 2022 (No IMDb ID)
+Found 0 results via read_sub.

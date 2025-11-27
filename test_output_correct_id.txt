@@ -1,0 +1,6 @@
+INFO:bg_subtitles.sources.opensubtitles:opensubtitles.read_sub query=Jingle Bell Heist imdb_id=tt24852126 imdb_token=tt24852126 year=2025 lang=bg
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles API search ok status=200 items=0
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles query search ok status=200 items=0
+Testing OpenSubtitles Provider...
+Searching for IMDb: tt24852126 (Jingle Bell Heist)
+Found 0 results via read_sub.

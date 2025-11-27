@@ -1,0 +1,27 @@
+INFO:bg_subtitles.sources.opensubtitles:opensubtitles.read_sub query=Jingle Bell Heist imdb_id=tt24852126 imdb_token=tt24852126 year=2025 lang=bg
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles API search ok status=200 items=0
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles query search ok status=200 items=0
+WARNING:bg_subtitles.sources.opensubtitles:OpenSubtitles scrape HTTP 403 for /en/search/sublanguageid-bul/imdbid-24852126/idmovie-2415078
+WARNING:bg_subtitles.sources.opensubtitles:OpenSubtitles scrape HTTP 403 for /en/search/sublanguageid-bul/imdbid-24852126
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles scrape query fallback /en/search/sublanguageid-bul/searchtext-Jingle%20Bell%20Heist
+INFO:bg_subtitles.sources.opensubtitles:OpenSubtitles scrape parsed table rows=2 for /en/search/sublanguageid-bul/searchtext-Jingle%20Bell%20Heist
+Testing OpenSubtitles Provider...
+Searching for IMDb: tt24852126 (Jingle Bell Heist)
+Found 1 results via read_sub.
+{'id': 'opensubtitles',
+ 'info': '"Midsomer Murders" Death and Dreams\n'
+         ' \t\t\t(2003)\n'
+         '\t\t[S06E02]\n'
+         '\t\tMidsomer Murders S06E02 Death and DreamsWatch onlineDownload '
+         'Subtitles Searcher',
+ 'language': 'bg',
+ 'payload': {'file_id': 'iduser-6780943',
+             'file_name': '"Midsomer Murders" Death and Dreams\n'
+                          ' \t\t\t(2003)\n'
+                          '\t\t[S06E02]\n'
+                          '\t\tMidsomer Murders S06E02 Death and DreamsWatch '
+                          'onlineDownload Subtitles Searcher',
+             'source': 'scrape',
+             'subtitle_id': 'iduser-6780943'},
+ 'url': 'iduser-6780943',
+ 'year': '2025'}

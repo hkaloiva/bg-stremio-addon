@@ -9,7 +9,7 @@ import time, random, threading, os
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .common import get_info, get_search_string, list_key, log_my, savetofile
-from . import Vlad00nMooo, subs_sab, subsland, unacs, subhero
+from . import Vlad00nMooo, subs_sab, subsland, unacs, subhero, opensubtitles
 from ..cache import TTLCache
 
 SOURCE_REGISTRY = {
@@ -18,6 +18,7 @@ SOURCE_REGISTRY = {
     "subsland": subsland,
     "Vlad00nMooo": Vlad00nMooo,
     "subhero": subhero,
+    "opensubtitles": opensubtitles,
 }
 
 DEFAULT_ENABLED = list(SOURCE_REGISTRY.keys())
@@ -35,6 +36,7 @@ MIN_INTERVALS = {
     "unacs": float(os.getenv("BG_SUBS_MIN_INTERVAL_UNACS", "0.10")),
     "Vlad00nMooo": float(os.getenv("BG_SUBS_MIN_INTERVAL_VLA", "0.10")),
     "subhero": float(os.getenv("BG_SUBS_MIN_INTERVAL_SUBHERO", "0.10")),
+    "opensubtitles": float(os.getenv("BG_SUBS_MIN_INTERVAL_OS", "0.50")),
 }
 
 

@@ -3,7 +3,7 @@ from typing import Optional, List
 import os
 
 class Settings(BaseSettings):
-    translator_version: str = 'v1.0.7-optimized'
+    translator_version: str = "v1.0.8-opensubtitles-fix"
     default_language: str = "bg-BG"
     force_prefix: bool = False
     force_meta: bool = False
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # 0 = disabled (fastest, no subtitle detection)
     # 1 = scraper only (fast, 1-2s, checks BG subtitle availability)
     # 2 = full enrichment (slow, 20-30s, probes video files + RealDebrid)
-    default_stream_enrich_level: int = 1
+    default_stream_enrich_level: int = 2
     stream_subs_max_streams: int = 4
     
     rd_token: Optional[str] = None

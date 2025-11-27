@@ -153,6 +153,15 @@ async def enrich_streams_with_subtitles(
                 langs.append(lang)
             if lang.startswith("bg") or lang.startswith("bul"):
                 bg_in_embedded = True
+        
+        # Fallback: Check subtitleLangs if embeddedSubtitles didn't yield a result
+        # This is necessary because some providers (like AIOStreams) don't send detailed track info
+        if not bg_in_embedded:
+             bg_in_embedded = any(l.startswith("bg") or l.startswith("bul") for l in langs)
+
+        # DEBUG LOGGING
+        if "bg" in langs or "bul" in langs:
+             print(f"DEBUG: Stream '{stream.get('name')}' | Embedded: {tracks} | Detected BG Embedded: {bg_in_embedded}")
 
         has_bg = any(l.startswith("bg") or l.startswith("bul") for l in langs)
         if not has_bg:

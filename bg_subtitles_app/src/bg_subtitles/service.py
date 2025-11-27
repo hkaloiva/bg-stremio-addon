@@ -824,6 +824,10 @@ async def search_subtitles_async(
     )
     _ensure_provider_presence(results, provider_buckets)
 
+
+    # Filter out OpenSubtitles: only used for flag detection, not serving
+    results = [r for r in results if r.get("id") != "opensubtitles"]
+    
     subtitles: List[Dict] = []
     for idx, entry in enumerate(results):
         payload: Dict[str, object] = {

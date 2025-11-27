@@ -547,6 +547,10 @@ def _download_scrape(file_id: str, fallback_name: Optional[str] = None) -> Dict[
         raise RuntimeError("OpenSubtitles scrape download failed") from exc
 
     ctype = (resp.headers.get("Content-Type") or "").lower()
+    log.info("OpenSubtitles scrape download ctype=%s size=%d", ctype, len(resp.content))
+    if len(resp.content) > 0:
+        log.info("OpenSubtitles scrape download head: %r", resp.content[:100])
+
     if "text/html" in ctype or not resp.content:
         raise RuntimeError("OpenSubtitles scrape download blocked or empty")
 
