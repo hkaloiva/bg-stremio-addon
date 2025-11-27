@@ -42,7 +42,8 @@ if [[ -n $(git status --porcelain) ]]; then
 fi
 
 echo "⬆️  Pushing to GitHub..."
-git push origin main || git push origin master
+echo "⬆️  Pushing to GitHub (optional)..."
+git push origin main || echo "⚠️ Git push failed, continuing with direct archive deployment..."
 
 echo "☁️  Creating Koyeb archive..."
 ARCHIVE_JSON=$(koyeb archives create . \
