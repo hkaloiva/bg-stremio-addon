@@ -257,7 +257,8 @@ async def enrich_streams_with_subtitles(
     if media_type and item_id and request_base:
         try:
             url = f"{request_base}/bg/subtitles/{media_type}/{item_id}.json?limit=1"
-            async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+            # Use a short timeout for enrichment to prevent stream loading delays
+            async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get(url)
                 if resp.status_code == 200:
                     data = resp.json()
