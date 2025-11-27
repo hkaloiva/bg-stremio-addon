@@ -62,7 +62,7 @@ echo "🐳 Deploying with Docker builder..."
 koyeb services update "${SERVICE_ID}" \
   --archive "${ARCHIVE_ID}" \
   --archive-builder docker \
-  --docker Dockerfile.koyeb \
+  --dockerfile Dockerfile.koyeb \
   -o json | jq -r '.latest_deployment_id'
 
 echo ""
