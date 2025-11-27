@@ -170,14 +170,15 @@ async def enrich_streams_with_subtitles(
         flag = "🇧🇬📀" if bg_in_embedded else "🇧🇬"
         try:
             name = str(stream.get("name") or "")
-            if flag not in name:
-                stream["name"] = f"{flag} {name}".strip()
+            # Remove any existing flags to avoid duplication if re-processing
+            clean_name = name.replace("🇧🇬📀", "").replace("🇧🇬", "").strip()
+            stream["name"] = f"{flag} {clean_name}".strip()
         except Exception:
             pass
         try:
             desc = str(stream.get("description") or "")
-            if flag not in desc:
-                stream["description"] = f"{desc} ⚑ {flag}".strip()
+            clean_desc = desc.replace("⚑ 🇧🇬📀", "").replace("⚑ 🇧🇬", "").strip()
+            stream["description"] = f"{clean_desc} ⚑ {flag}".strip()
         except Exception:
             pass
 
