@@ -290,10 +290,10 @@ def read_sub(mov, year, normalized_fragment=None):
 def get_sub(id, sub_url, filename):
   s = {}
   path = f"/index.php?act=download&attach_id={sub_url}"
+  # Try plain HTTP first (SAB often blocks TLS on downloads), then fall back to HTTPS.
   for attempt in (1, 2, 3):
     try:
-      # Try HTTPS first (downloads often require TLS), then fall back to HTTP once.
-      response, conn = _https_request("GET", path, None, head)
+      response, conn = _http_request("GET", path, None, head)
       if response.status != 200:
         try:
           conn.close()
@@ -334,9 +334,9 @@ def get_sub(id, sub_url, filename):
         import time as _t
         _t.sleep(0.3 * attempt)
         continue
-      # Fallback to HTTP once
+      # Final fallback to HTTPS (some mirrors require TLS)
       try:
-        response, conn = _http_request("GET", path, None, head)
+        response, conn = _https_request("GET", path, None, head)
         if response.status != 200:
           try:
             conn.close()

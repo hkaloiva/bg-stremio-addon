@@ -34,7 +34,8 @@ def _pick_best(names: Iterable[str]) -> str:
 def _should_skip(name: str) -> bool:
     ext = os.path.splitext(name)[1].lower()
     if ext in SKIP_ARCHIVE_EXTENSIONS:
-        log.info("extract_subtitle: skipping unsupported archive entry %s", name)
+        # Downgrade to debug to avoid noisy logs; these skips are expected.
+        log.debug("extract_subtitle: skipping unsupported archive entry %s", name)
         return True
     return False
 

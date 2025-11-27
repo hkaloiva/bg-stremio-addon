@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import urllib.parse
 from html.parser import HTMLParser
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -99,6 +100,8 @@ def search(context: SearchContext) -> List[Dict]:
         return []
 
     payload = response.json()
+    data_len = len(payload.get("data", [])) if isinstance(payload, dict) else 0
+    log.info("OpenSubtitles API search ok status=%s items=%s", response.status_code, data_len)
     return _entries_from_payload(payload, context.year)
 
 
@@ -135,6 +138,8 @@ def search_by_query(title: str, year: Optional[str], language: str = DEFAULT_LAN
         return []
 
     payload = response.json()
+    data_len = len(payload.get("data", [])) if isinstance(payload, dict) else 0
+    log.info("OpenSubtitles query search ok status=%s items=%s", response.status_code, data_len)
     return _entries_from_payload(payload, year)
 
 
@@ -166,8 +171,8 @@ def read_sub(query: str, year: str = "", fragment: Optional[str] = None, imdb_id
         if results:
             return results
     # HTML scrape fallback
-    if imdb_token:
-        results = search_by_scrape(ctx)
+    if imdb_token or title:
+        results = search_by_scrape(ctx, query=title or query)
         if results:
             return results
     return []
@@ -180,25 +185,36 @@ def get_sub(source_id: str, sub_url: str, filename: Optional[str] = None) -> Dic
         return {}
 
 
-def search_by_scrape(context: SearchContext) -> List[Dict]:
+def search_by_scrape(context: SearchContext, query: Optional[str] = None) -> List[Dict]:
     """
     Fallback scraper (HTML) similar to dexter21767/stremio-opensubtitles:
     1) try suggest.php to get idmovie, else fall back to imdb-only search
     2) scrape search page and filter to the desired language (bg)
     """
     imdb_numeric = _numeric_imdb_id(context.imdb_id)
-    if not imdb_numeric:
+    if not imdb_numeric and not (query or "").strip():
         return []
     try:
-        idmovie = _suggest_idmovie(imdb_numeric)
-        if idmovie:
-            path = _build_search_path(imdb_numeric, idmovie, context)
-            entries = _scrape_search_page(path, context.language, context.year)
+        if imdb_numeric:
+            idmovie = _suggest_idmovie(imdb_numeric)
+            if idmovie:
+                path = _build_search_path(imdb_numeric, idmovie, context)
+                entries = _scrape_search_page(path, context.language, context.year, query)
+                if entries:
+                    return entries
+            # Fallback: direct imdb search without idmovie
+            path = _build_search_path(imdb_numeric, None, context)
+            entries = _scrape_search_page(path, context.language, context.year, query)
             if entries:
                 return entries
-        # Fallback: direct imdb search without idmovie
-        path = _build_search_path(imdb_numeric, None, context)
-        return _scrape_search_page(path, context.language, context.year)
+        # Final fallback: plain text search if IMDb-tagged results missing (helps when subs lack imdb id)
+        q = (query or "").strip()
+        if q:
+            lang_path = "bul" if (context.language or DEFAULT_LANGUAGE).startswith("bg") else (context.language or DEFAULT_LANGUAGE)
+            search_path = f"/en/search/sublanguageid-{lang_path}/searchtext-{urllib.parse.quote(q)}"
+            log.info("OpenSubtitles scrape query fallback %s", search_path)
+            return _scrape_search_page(search_path, context.language, context.year, q)
+        return []
     except Exception as exc:  # noqa: BLE001
         log.warning("OpenSubtitles scrape failed", exc_info=exc)
         return []
@@ -283,11 +299,18 @@ class _TableParser(HTMLParser):
             self._cell_data.append(data)
 
 
-def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[Dict]:
+def _scrape_search_page(path: str, language: str, year: Optional[str], target: Optional[str] = None) -> List[Dict]:
     url = f"{SCRAPE_BASE_URL}{path}"
-    headers = {"User-Agent": _get_user_agent()}
+    headers = {
+        "User-Agent": _get_user_agent(),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,bg;q=0.8",
+        "Referer": f"{SCRAPE_BASE_URL}/en",
+    }
     resp = requests.get(url, timeout=15, headers=headers)
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        log.warning("OpenSubtitles scrape HTTP %s for %s", resp.status_code, path)
+        return []
     html = resp.text
     def _norm_lang(raw: str) -> str:
         raw = (raw or "").lower()
@@ -296,10 +319,14 @@ def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[D
         return raw
 
     target_lang = _norm_lang(language or DEFAULT_LANGUAGE)
+    target_tokens: List[str] = []
+    if target:
+        target_tokens = [tok for tok in re.split(r"[^a-z0-9]+", target.lower()) if tok]
     # Fast path: parse all subtitle hrefs and filter by language prefix segment
     hrefs = re.findall(r'href="([^"]+/subtitles/[^"]+)"', html, flags=re.IGNORECASE)
     seen = set()
     entries: List[Dict] = []
+    loose_entries: List[Dict] = []
     for href in hrefs:
         try:
             parts = href.split("/")
@@ -315,7 +342,10 @@ def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[D
                 continue
             seen.add(key)
             name = slug.replace("-", " ").strip() or "OpenSubtitles"
-            entries.append(
+            norm_info = " ".join(re.split(r"[^a-z0-9]+", name.lower()))
+            matched_all = all(tok in norm_info for tok in target_tokens) if target_tokens else True
+            bucket = entries if matched_all else loose_entries
+            bucket.append(
                 {
                     "id": "opensubtitles",
                     "url": sub_id,
@@ -323,17 +353,26 @@ def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[D
                     "year": year or "",
                     "language": lang_norm,
                     "payload": {
-                        "file_id": sub_id,
-                        "file_name": name,
-                        "subtitle_id": sub_id,
-                    },
-                }
-            )
+                    "file_id": sub_id,
+                    "file_name": name,
+                    "subtitle_id": sub_id,
+                    "source": "scrape",
+                },
+            }
+        )
         except Exception:
             continue
 
-    if entries:
-        return entries
+    if entries or loose_entries:
+        chosen = entries or loose_entries
+        log.info(
+            "OpenSubtitles scrape hrefs=%d strict=%d loose=%d for %s",
+            len(chosen),
+            len(entries),
+            len(loose_entries),
+            path,
+        )
+        return chosen
 
     # Fallback to legacy table parsing if href strategy finds nothing
     m = re.search(r"<table[^>]*id=\"search_results\"[^>]*>(.*?)</table>", html, flags=re.DOTALL | re.IGNORECASE)
@@ -346,6 +385,9 @@ def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[D
     def _strip_html(text: str) -> str:
         return re.sub(r"<[^>]+>", "", text or "").strip()
 
+    log.info("OpenSubtitles scrape parsed table rows=%d for %s", len(parser.rows), path)
+    table_entries: List[Dict] = []
+    loose_table_entries: List[Dict] = []
     for row in parser.rows:
         if len(row) < 4:
             continue
@@ -366,7 +408,10 @@ def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[D
         href = href_match.group(1)
         file_id = href.strip().split("/")[-1] if "/" in href else href
         name = _strip_html(name_html) or "OpenSubtitles"
-        entries.append(
+        norm_info = " ".join(re.split(r"[^a-z0-9]+", name.lower()))
+        matched_all = all(tok in norm_info for tok in target_tokens) if target_tokens else True
+        bucket = table_entries if matched_all else loose_table_entries
+        bucket.append(
             {
                 "id": "opensubtitles",
                 "url": file_id,
@@ -377,10 +422,11 @@ def _scrape_search_page(path: str, language: str, year: Optional[str]) -> List[D
                     "file_id": file_id,
                     "file_name": name,
                     "subtitle_id": file_id,
+                    "source": "scrape",
                 },
             }
         )
-    return entries
+    return table_entries or loose_table_entries
 
 
 def _entries_from_payload(payload: Dict, year: Optional[str]) -> List[Dict]:
@@ -417,6 +463,7 @@ def _entries_from_payload(payload: Dict, year: Optional[str]) -> List[Dict]:
                     "file_id": file_id,
                     "file_name": file_entry.get("file_name"),
                     "subtitle_id": attrs.get("subtitle_id"),
+                    "source": "api",
                 },
             }
         )
@@ -424,8 +471,15 @@ def _entries_from_payload(payload: Dict, year: Optional[str]) -> List[Dict]:
     return entries
 
 
-def download(file_id: str, fallback_name: Optional[str] = None) -> Dict[str, bytes]:
+def download(file_id: str, fallback_name: Optional[str] = None, payload: Optional[Dict] = None) -> Dict[str, bytes]:
     """Download a subtitle file from OpenSubtitles."""
+    force_scrape = (payload or {}).get("source") == "scrape"
+
+    # If explicitly marked as scraped or the id is non-numeric, skip API.
+    numeric_match = re.search(r"(\d+)", str(file_id) if file_id is not None else "")
+    if force_scrape or not numeric_match:
+        return _download_scrape(file_id, fallback_name=fallback_name)
+
     if not is_configured():
         raise RuntimeError("OpenSubtitles API key not configured")
 
@@ -435,23 +489,66 @@ def download(file_id: str, fallback_name: Optional[str] = None) -> Dict[str, byt
         response = requests.post(
             f"{API_BASE}/download",
             headers=headers,
-            json={"file_id": int(file_id)},
+            json={"file_id": int(numeric_match.group(1))},
             timeout=10,
         )
         response.raise_for_status()
-    except (ValueError, requests.RequestException) as exc:  # noqa: BLE001
-        raise RuntimeError("OpenSubtitles download request failed") from exc
-
-    data = response.json()
-    link = data.get("link")
-    file_name = data.get("file_name") or fallback_name or "subtitle.srt"
-    if not link:
-        raise RuntimeError("OpenSubtitles download response missing link")
-
-    try:
+        data = response.json()
+        link = data.get("link")
+        file_name = data.get("file_name") or fallback_name or "subtitle.srt"
+        if not link:
+            raise RuntimeError("OpenSubtitles download response missing link")
         file_response = requests.get(link, timeout=15)
         file_response.raise_for_status()
-    except requests.RequestException as exc:  # noqa: BLE001
-        raise RuntimeError("OpenSubtitles file download failed") from exc
+        return {"data": file_response.content, "fname": file_name}
+    except (requests.RequestException, ValueError) as exc:
+        # API download can reject scraped ids; try scraping the site directly.
+        log.warning("OpenSubtitles API download failed, falling back to scrape", exc_info=exc)
+        return _download_scrape(file_id, fallback_name=fallback_name)
 
-    return {"data": file_response.content, "fname": file_name}
+
+def _download_scrape(file_id: str, fallback_name: Optional[str] = None) -> Dict[str, bytes]:
+    """
+    Best-effort download by scraping the site when API download is unavailable
+    (common for scraped ids like iduser-XXXX).
+    """
+    num_match = re.search(r"(\d+)", str(file_id) if file_id is not None else "")
+    if not num_match:
+        raise RuntimeError("OpenSubtitles download: no usable id to scrape")
+    numeric_id = num_match.group(1)
+
+    base = SCRAPE_BASE_URL
+    session = requests.Session()
+
+    # 1) Hit subtitle page to collect cookies and get past basic checks.
+    page_headers = {
+        "User-Agent": _get_user_agent(),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.8",
+    }
+    page_url = f"{base}/en/subtitles/{numeric_id}"
+    try:
+        session.get(page_url, headers=page_headers, timeout=10, allow_redirects=True)
+    except requests.RequestException:
+        # Continue anyway; some proxies may not need the priming request.
+        pass
+
+    # 2) Attempt direct download, keeping cookies and referer.
+    download_headers = {
+        "User-Agent": _get_user_agent(),
+        "Referer": page_url,
+        "Accept": "*/*",
+    }
+    url = f"{base}/en/subtitleserve/sub/{numeric_id}"
+    resp = session.get(url, headers=download_headers, timeout=20, allow_redirects=True)
+    try:
+        resp.raise_for_status()
+    except requests.RequestException as exc:  # noqa: BLE001
+        raise RuntimeError("OpenSubtitles scrape download failed") from exc
+
+    ctype = (resp.headers.get("Content-Type") or "").lower()
+    if "text/html" in ctype or not resp.content:
+        raise RuntimeError("OpenSubtitles scrape download blocked or empty")
+
+    fname = fallback_name or f"{numeric_id}.srt"
+    return {"data": resp.content, "fname": fname}

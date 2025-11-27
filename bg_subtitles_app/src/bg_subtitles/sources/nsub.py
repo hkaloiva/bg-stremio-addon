@@ -9,7 +9,7 @@ import time, random, threading, os
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .common import get_info, get_search_string, list_key, log_my, savetofile
-from . import Vlad00nMooo, subs_sab, subsland, unacs, opensubtitles
+from . import Vlad00nMooo, subs_sab, subsland, unacs, opensubtitles, subhero
 from ..cache import TTLCache
 
 # Enable OpenSubtitles by default when configured; allow explicit opt-out via env.
@@ -24,6 +24,7 @@ SOURCE_REGISTRY = {
     "subs_sab": subs_sab,
     "subsland": subsland,
     "Vlad00nMooo": Vlad00nMooo,
+    "subhero": subhero,
 }
 if _ENABLE_OPENSUB:
     SOURCE_REGISTRY["opensubtitles"] = opensubtitles
@@ -42,6 +43,7 @@ MIN_INTERVALS = {
     "subsland": float(os.getenv("BG_SUBS_MIN_INTERVAL_SUBSLAND", "0.30")),
     "unacs": float(os.getenv("BG_SUBS_MIN_INTERVAL_UNACS", "0.10")),
     "Vlad00nMooo": float(os.getenv("BG_SUBS_MIN_INTERVAL_VLA", "0.10")),
+    "subhero": float(os.getenv("BG_SUBS_MIN_INTERVAL_SUBHERO", "0.10")),
 }
 
 

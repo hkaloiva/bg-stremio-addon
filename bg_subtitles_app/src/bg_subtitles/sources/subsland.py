@@ -5,9 +5,11 @@ Always proxies through Cloudflare Worker to bypass Cloudflare challenge.
 Author: Kaloyan Ivanov (2025)
 """
 
-import requests, re, urllib.parse, io, random, os, html
+import requests, re, urllib.parse, io, random, os, html, logging
 from .nsub import log_my, savetofile, list_key
 from .common import BeautifulSoup
+
+log = logging.getLogger("bg_subtitles.subsland")
 
 # --- Configuration ---
 s = requests.Session()
@@ -184,7 +186,8 @@ def _filter_by_fragment(results, fragment):
         candidate = str(entry.get("info") or "")
         norm_candidate = _normalize_fragment(candidate)
         if normalized_target and normalized_target not in norm_candidate:
-            log_my(f"[filter] dropped mismatched subtitle title={candidate} target={fragment}")
+            # Too noisy for normal ops; keep at debug.
+            log.debug("[filter] dropped mismatched subtitle title=%s target=%s", candidate, fragment)
             continue
         filtered.append(entry)
     return filtered
@@ -214,9 +217,7 @@ def read_sub(search_term, year_hint="", normalized_fragment=None):
         entry = dict(entry)
         entry.pop("lang_flag", None)
         clean_results.append(entry)
-    for k in list_key:
-        log_my(getattr(clean_results, k, []))
-
+    log.debug("[SubsLand] results=%d (after filters)", len(clean_results))
     return clean_results
 
 

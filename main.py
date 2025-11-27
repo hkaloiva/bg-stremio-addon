@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), "bg_subtitles_app", "src"))
 
 # Settings
-translator_version = 'v1.0.5-osfix'
+translator_version = 'v1.0.6-subhero'
 DEFAULT_LANGUAGE = "bg-BG"
 FORCE_PREFIX = False
 FORCE_META = False

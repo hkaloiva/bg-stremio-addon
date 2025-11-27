@@ -125,7 +125,7 @@ _INFLIGHT_EVENTS: dict[str, threading.Event] = {}
 _PENDING_EMPTY_MARKS: Dict[str, asyncio.Task] = {}
 
 DEFAULT_PROVIDER_TIMEOUT = float(getattr(nsub_module, "SOURCE_TIMEOUT", 12.0))
-VLAD_TIMEOUT = _env_float("BG_SUBS_TIMEOUT_VLAD00N", 3.0)
+VLAD_TIMEOUT = _env_float("BG_SUBS_TIMEOUT_VLAD00N", 4.0)
 VLAD_BREAKER_TTL = _env_float("BG_SUBS_BREAKER_TTL_VLAD00N", 120.0)
 try:
     _concurrency_raw = int(os.getenv("BG_SUBS_CONCURRENCY_LIMIT", "5"))
@@ -1588,7 +1588,7 @@ def resolve_subtitle(token: str) -> Dict[str, bytes]:
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail="OpenSubtitles payload missing file identifier",
                         )
-                    data = opensubtitles_source.download(str(file_id), payload.get("file_name"))
+                    data = opensubtitles_source.download(str(file_id), payload.get("file_name"), payload=payload)
                 else:
                     if not sub_url:
                         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subtitle token")
