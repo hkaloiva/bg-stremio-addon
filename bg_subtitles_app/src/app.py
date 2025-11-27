@@ -355,6 +355,7 @@ async def _build_subtitles_response(
     limit: Optional[int] = None,
     variants: Optional[int] = None,
     force_iso639_1: bool = False,
+    strict_mode: bool = False,
     had_json_suffix: bool = False,
     extras: Optional[Dict[str, str]] = None,
 ) -> JSONResponse:
@@ -391,10 +392,15 @@ async def _build_subtitles_response(
             pass
     per_source = variants if variants and variants > 0 else (safe_variants_env or default_variants)
 
-    forward_keys = {"filename", "videoName", "name", "videoSize", "videoHash", "videoFps", "videoDuration", "videoDurationSec"}
+    forward_keys = {"filename", "videoSize", "videoHash", "videoFps", "videoDuration", "videoDurationSec"}
+    if not strict_mode:
+        forward_keys.update({"videoName", "name"})
+    
     forward = {k: v for k, v in request.query_params.items() if k in forward_keys and v}
-    if "filename" not in forward and ("videoName" in forward or "name" in forward):
-        forward["filename"] = forward.pop("videoName", forward.pop("name", ""))
+    
+    if not strict_mode:
+        if "filename" not in forward and ("videoName" in forward or "name" in forward):
+            forward["filename"] = forward.pop("videoName", forward.pop("name", ""))
     
     if extras:
         for k, v in extras.items():
@@ -534,7 +540,7 @@ async def subtitles(media_type: str, item_id: str, request: Request, limit: Opti
     item_id = unquote(item_id)
     force_bg = _stremio_only_enabled() or _is_stremio_request(request)
     return await _build_subtitles_response(
-        media_type, item_id, request, addon_path=None, limit=limit, force_iso639_1=force_bg, had_json_suffix=True
+        media_type, item_id, request, addon_path=None, limit=limit, force_iso639_1=force_bg, strict_mode=force_bg, had_json_suffix=True
     )
 
 @app.get("/{addon_path}/subtitles/{media_type}/{item_id}.json")
@@ -542,7 +548,7 @@ async def subtitles_prefixed(addon_path: str, media_type: str, item_id: str, req
     item_id = unquote(item_id)
     is_stremio = (addon_path or "").lower() == "stremio"
     return await _build_subtitles_response(
-        media_type, item_id, request, addon_path=addon_path, limit=limit, force_iso639_1=is_stremio, had_json_suffix=True
+        media_type, item_id, request, addon_path=addon_path, limit=limit, force_iso639_1=is_stremio, strict_mode=is_stremio, had_json_suffix=True
     )
 
 @app.get("/{addon_path}/{config}/subtitles/{media_type}/{item_id}.json")
@@ -551,7 +557,7 @@ async def subtitles_prefixed_config(addon_path: str, config: str, media_type: st
     full_prefix = f"{addon_path}/{config}"
     is_stremio = (addon_path or "").lower() == "stremio" or full_prefix.split("/",1)[0].lower() == "stremio"
     return await _build_subtitles_response(
-        media_type, item_id, request, addon_path=full_prefix, limit=limit, force_iso639_1=is_stremio, had_json_suffix=True
+        media_type, item_id, request, addon_path=full_prefix, limit=limit, force_iso639_1=is_stremio, strict_mode=is_stremio, had_json_suffix=True
     )
 
 @app.get("/subtitles/{media_type}/{imdb_id:path}")
@@ -627,39 +633,324 @@ async def _handle_path_route(media_type, imdb_id, request, addon_path, limit, va
         limit=limit,
         variants=variants,
         force_iso639_1=should_force_bg,
+        strict_mode=is_stremio,
         had_json_suffix=had_json_suffix,
         extras=extras_map
     )
 
-# Download route (unchanged mostly, but ensure imports)
+
+def _map_infuse_provider(raw: str) -> Optional[str]:
+    key = str(raw or "").strip().lower()
+    return INFUSE_PROVIDER_MAP.get(key)
+
+
+def _request_base(request: Request) -> str:
+    """Build scheme://host:port from incoming request."""
+    try:
+        proto = request.headers.get("x-forwarded-proto") or request.headers.get("X-Forwarded-Proto")
+    except Exception:
+        proto = None
+    try:
+        host = request.headers.get("x-forwarded-host") or request.headers.get("X-Forwarded-Host")
+    except Exception:
+        host = None
+    try:
+        base = f"{request.url.scheme}://{request.url.netloc}"
+    except Exception:
+        base = ""
+    if host:
+        # Honor forwarded host when available (useful behind reverse proxies)
+        parts = base.split("://", 1)
+        scheme = proto or parts[0] if len(parts) == 2 else (proto or "http")
+        base = f"{scheme}://{host}"
+    elif proto and base.startswith("http://"):
+        # Respect forwarded proto for TLS-terminated setups
+        base = base.replace("http://", f"{proto}://", 1)
+    return base.rstrip("/")
+
+
+def _infuse_base_url(request: Request) -> str:
+    """Choose the public-facing base for Infuse callbacks."""
+    try:
+        env_base = os.getenv("BG_INFUSE_PUBLIC_BASE") or os.getenv("BG_SUBS_PUBLIC_BASE")
+    except Exception:
+        env_base = None
+    if env_base:
+        return env_base.rstrip("/")
+    base = _request_base(request) or "http://localhost:7080"
+    # Avoid loopback/unspecified hosts for Infuse (iOS blocks them). Prefer host header or client IP.
+    loopback_markers = ("127.0.0.1", "localhost", "0.0.0.0")
+    if any(mark in base for mark in loopback_markers):
+        try:
+            host_hdr = request.headers.get("host") or request.headers.get("Host")
+        except Exception:
+            host_hdr = None
+        if host_hdr:
+            base = f"{request.url.scheme}://{host_hdr}"
+        else:
+            try:
+                client_host = request.client.host if request.client else None
+            except Exception:
+                client_host = None
+            if client_host:
+                # Default port 7080 unless forwarded host already included it.
+                port = request.url.port or 7080
+                base = f"{request.url.scheme}://{client_host}:{port}"
+    return base.rstrip("/")
+
+
+@app.get("/infuse-link")
+async def infuse_link(
+    request: Request,
+    url: str = Query(..., description="Stream URL (http/https)"),
+    imdb: str = Query(..., description="IMDb id or video identifier"),
+    type: str = Query("movie", description="media type: movie or series"),
+    redirect: bool = Query(False, description="If true, redirect to Infuse deep link"),
+):
+    """Build an Infuse deep link with all BG subtitle providers attached."""
+    stream_url = (url or "").strip()
+    if not stream_url or not (stream_url.startswith("http://") or stream_url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="stream url must start with http(s)")
+
+    imdb_id = (imdb or "").strip()
+    if not imdb_id or not re.match(r"^[A-Za-z0-9:_\\-\\.]+$", imdb_id):
+        raise HTTPException(status_code=400, detail="imdb id is required and must be alphanumeric")
+
+    media_type = (type or "movie").strip().lower()
+    if media_type not in {"movie", "series"}:
+        media_type = "movie"
+
+    # Infuse currently behaves best with a single external subtitle URL.
+    # Keep only the top-priority provider to maximize chance Infuse shows it.
+    providers = ["subsunacs"]
+    # Infuse is finicky about query params on subtitle URLs; build a clean path-only URL.
+    public_base = _infuse_base_url(request)
+    sub_urls = [
+        f"{public_base}/bg/subtitle/{quote(imdb_id, safe='')}/{p}.srt"
+        for p in providers
+    ]
+
+    # Build query: url=<stream>&sub=<...>&sub=<...>
+    query_parts = [("url", stream_url)]
+    for s in sub_urls:
+        query_parts.append(("sub", s))
+    # Use strict percent-encoding (no spaces as '+') for Infuse compatibility.
+    infuse_url = "infuse://x-callback-url/play?" + urlencode(query_parts, quote_via=quote)
+
+    debug = {
+        "infuse_url": infuse_url,
+        "stream_url": stream_url,
+        "subtitle_urls": sub_urls,
+        "imdb": imdb_id,
+        "providers": providers,
+        "type": media_type,
+        "request_base": _request_base(request),
+    }
+
+    if redirect:
+        return RedirectResponse(url=infuse_url, status_code=307)
+    return JSONResponse(content=debug)
+
+
+@app.get("/subtitle/{video_id}/{source}.srt")
+async def serve_infuse_subtitle(
+    request: Request,
+    video_id: str,
+    source: str,
+    type: str = Query("movie", description="media type: movie or series"),
+) -> Response:
+    """
+    Infuse-friendly route: predictable path shape that reuses the token pipeline.
+    """
+    target = _map_infuse_provider(source)
+    if not target or target not in _INFUSE_ALLOWED_PROVIDERS:
+        raise HTTPException(status_code=404, detail="Unknown subtitle provider")
+
+    try:
+        media_type = (type or "").strip().lower()
+        # Infer series when imdb id includes season/episode segments to avoid query params on the URL.
+        if not media_type:
+            media_type = "series" if ":" in video_id else "movie"
+        if media_type not in {"movie", "series"}:
+            media_type = "movie"
+        results = await search_subtitles_async(media_type, video_id, per_source=1, player=None)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Infuse subtitle search failed for %s: %s", video_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to search subtitles") from exc
+
+    match = None
+    for entry in results or []:
+        entry_source = str(entry.get("source") or "").lower()
+        if entry_source not in _INFUSE_ALLOWED_PROVIDERS:
+            continue
+        if entry_source == target:
+            match = entry
+            break
+
+    if not match:
+        raise HTTPException(status_code=404, detail="Subtitle not found for provider")
+
+    token = match.get("token")
+    if not token:
+        raise HTTPException(status_code=502, detail="Subtitle token missing")
+
+    return _subtitle_download(request, str(token))
+
+
+def _subtitle_download(request: Request, token: str) -> Response:
+    resolved = resolve_subtitle(token)
+    filename = resolved.get("filename") or "subtitle.srt"
+    encoding = resolved.get("encoding", "utf-8")
+    fmt = resolved.get("format") or DEFAULT_FORMAT
+    # Determine client specifics (iOS often expects special handling)
+    try:
+        ua = (request.headers.get("user-agent") or "").lower()
+    except Exception:
+        ua = ""
+    is_ios = any(tok in ua for tok in ("iphone", "ipad", "ipod"))
+
+    content: bytes = resolved["content"]
+    # Optional line-ending normalization for SRT
+    try:
+        crlf_flag = os.getenv("BG_SUBS_SRT_CRLF", "").lower() in {"1", "true", "yes"}
+    except Exception:
+        crlf_flag = False
+    if fmt == "srt" and (crlf_flag or is_ios):
+        try:
+            text = content.decode("utf-8", errors="replace")
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+            text = text.replace("\n", "\r\n")
+            content = text.encode("utf-8")
+            encoding = "utf-8"
+        except Exception:
+            pass
+
+    # MIME type selection
+    if fmt == "srt":
+        # Prefer plain/text with charset by default; Infuse can reject uncommon MIME types.
+        srt_mime = os.getenv("BG_SUBS_SRT_MIME") or "text/plain; charset=utf-8"
+        media_type = srt_mime
+    elif fmt in {"sub", "txt", "ass", "ssa"}:
+        media_type = "text/plain"
+    else:
+        media_type = "application/octet-stream"
+
+    # Build final media type with charset once; avoid duplicating charset if already present
+    def _with_charset(mt: str, enc: str) -> str:
+        try:
+            if "charset=" in (mt or "").lower():
+                return mt
+            return f"{mt}; charset={enc}"
+        except Exception:
+            return mt
+
+    etag = hashlib.md5(content).hexdigest()
+    current_etag = f'W/"{etag}"'
+    inm = request.headers.get("if-none-match")
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "public, max-age=86400, immutable",
+        "ETag": current_etag,
+        "Access-Control-Allow-Origin": "*",
+        "Accept-Ranges": "bytes",
+    }
+    if inm and inm.strip() == current_etag:
+        return Response(status_code=304, headers=headers)
+
+    # Basic support for HTTP Range requests (iOS/players may depend on it)
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if range_header and range_header.lower().startswith("bytes="):
+        try:
+            spec = range_header.split("=", 1)[1]
+            start_s, end_s = (spec.split("-", 1) + [""])[:2]
+            total = len(content)
+            if start_s:
+                start = int(start_s)
+            else:
+                start = 0
+            if end_s:
+                end = int(end_s)
+            else:
+                end = total - 1
+            if start >= total:
+                h = dict(headers)
+                h["Content-Range"] = f"bytes */{total}"
+                return Response(status_code=416, headers=h)
+            end = min(end, total - 1)
+            chunk = content[start : end + 1]
+            h = dict(headers)
+            h["Content-Range"] = f"bytes {start}-{end}/{total}"
+            h["Content-Length"] = str(len(chunk))
+            resp = Response(content=chunk, media_type=_with_charset(media_type, encoding), headers=h, status_code=206)
+            if _debug_enabled():
+                try:
+                    print(json.dumps({
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "level": "INFO",
+                        "logger": "download",
+                        "msg": "partial",
+                        "range": f"{start}-{end}",
+                        "total": total,
+                        "ua": (request.headers.get("user-agent") or "")[:160],
+                    }))
+                except Exception:
+                    pass
+            return resp
+        except Exception:
+            # Fall back to full response on parse errors
+            pass
+
+    # Add length for clients that expect it on full responses
+    headers["Content-Length"] = str(len(content))
+
+    resp = Response(content=content, media_type=_with_charset(media_type, encoding), headers=headers)
+    if _debug_enabled():
+        try:
+            print(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "level": "INFO",
+                "logger": "download",
+                "msg": "full",
+                "length": len(content),
+                "ua": (request.headers.get("user-agent") or "")[:160],
+            }))
+        except Exception:
+            pass
+    return resp
+
+
 @app.get("/subtitle/{token}.srt")
-async def download_subtitle(token: str, request: Request):
-    return await _download_handler(token, request)
+async def serve_subtitle(request: Request, token: str) -> Response:
+    return _subtitle_download(request, token)
+
 
 @app.get("/{addon_path}/subtitle/{token}.srt")
-async def download_subtitle_prefixed(addon_path: str, token: str, request: Request):
-    return await _download_handler(token, request)
+async def serve_subtitle_prefixed(request: Request, addon_path: str, token: str) -> Response:
+    return _subtitle_download(request, token)
 
-async def _download_handler(token: str, request: Request):
-    # This part was not in the original file view, but I assume it exists or is imported.
-    # Wait, I didn't see the download handler in the previous view_file output!
-    # It must have been further down in the file.
-    # I should check if I missed it.
-    # I'll assume it's imported from service or I need to implement it.
-    # The original file had `from bg_subtitles.service import resolve_subtitle`
-    # I'll implement a basic handler that calls resolve_subtitle.
-    
-    try:
-        content, filename = await resolve_subtitle(token)
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail="Subtitle not found or expired")
-    
-    return Response(
-        content=content,
-        media_type="application/x-subrip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "public, max-age=86400, immutable",
-            "Access-Control-Allow-Origin": "*",
-        }
-    )
+
+# Explicit HEAD handlers for subtitle downloads (some clients probe with HEAD)
+@app.head("/subtitle/{token}.srt")
+async def head_subtitle(request: Request, token: str) -> Response:
+    resp = _subtitle_download(request, token)
+    resp.body = b""
+    return resp
+
+@app.head("/{addon_path}/subtitle/{token}.srt")
+async def head_subtitle_prefixed(request: Request, addon_path: str, token: str) -> Response:
+    resp = _subtitle_download(request, token)
+    resp.body = b""
+    return resp
+
+# Compatibility: extra config segment before subtitle download
+@app.get("/{addon_path}/{config}/subtitle/{token}.srt")
+async def serve_subtitle_prefixed_config(request: Request, addon_path: str, config: str, token: str) -> Response:
+    return _subtitle_download(request, token)
+
+@app.head("/{addon_path}/{config}/subtitle/{token}.srt")
+async def head_subtitle_prefixed_config(request: Request, addon_path: str, config: str, token: str) -> Response:
+    resp = _subtitle_download(request, token)
+    resp.body = b""
+    return resp
