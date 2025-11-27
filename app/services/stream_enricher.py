@@ -269,25 +269,28 @@ async def enrich_streams_with_subtitles(
 
     if bg_scraped:
         for stream in streams:
-            # Skip if already flagged via embedded/meta
-            if stream.get("subs_bg") or ("bg-subs" in (stream.get("visualTags") or [])):
-                continue
-            stream["subs_bg"] = True
             tags = stream.get("visualTags") or []
+            # Skip if already flagged via embedded/meta
+            if stream.get("subs_bg") or ("bg-subs" in tags) or ("bg-embedded" in tags):
+                continue
+            
+            stream["subs_bg"] = True
             if "bg-subs" not in tags:
                 tags.append("bg-subs")
             if "bg-scraped" not in tags:
                 tags.append("bg-scraped")
             stream["visualTags"] = tags
+            
+            # Only add the plain flag if no other flag exists
             try:
                 name = str(stream.get("name") or "")
-                if "🇧🇬" not in name:
+                if "🇧🇬" not in name and "🇧🇬📀" not in name:
                     stream["name"] = f"🇧🇬 {name}".strip()
             except Exception:
                 pass
             try:
                 desc = str(stream.get("description") or "")
-                if "🇧🇬" not in desc:
+                if "🇧🇬" not in desc and "🇧🇬📀" not in desc:
                     stream["description"] = f"{desc} ⚑ 🇧🇬".strip()
             except Exception:
                 pass
