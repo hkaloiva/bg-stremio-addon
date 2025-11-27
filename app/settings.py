@@ -3,7 +3,7 @@ from typing import Optional, List
 import os
 
 class Settings(BaseSettings):
-    translator_version: str = 'v1.0.6-subhero'
+    translator_version: str = 'v1.0.7-optimized'
     default_language: str = "bg-BG"
     force_prefix: bool = False
     force_meta: bool = False

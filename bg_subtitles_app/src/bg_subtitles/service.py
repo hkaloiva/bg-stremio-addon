@@ -439,6 +439,113 @@ async def fetch_all_providers_async(
     return deduped, provider_stats
 
 
+async def check_bg_subs_availability(
+    media_type: str,
+    raw_id: str,
+    player: Optional[Dict[str, str]] = None,
+) -> bool:
+    """
+    Fast check if any BG subtitles exist for the given item.
+    Returns True immediately upon the first successful provider response.
+    """
+    # Check main cache first
+    player = player or {}
+    base_cache_key = _result_cache_key(media_type, raw_id, 1, player)
+    if RESULT_CACHE.get(base_cache_key):
+        return True
+    if EMPTY_CACHE.get(base_cache_key):
+        return False
+
+    # Build item
+    item = build_scraper_item(media_type, raw_id)
+    if not item:
+        return False
+    
+    # Fallback logic (simplified for speed check)
+    needs_title = not (item.get("title") or "").strip()
+    if FALLBACK_META_ENABLED and needs_title:
+        fallback_title, fallback_year = _infer_title_year_from_player(player, raw_id)
+        if fallback_title:
+            item["title"] = fallback_title
+            if fallback_year:
+                item["year"] = fallback_year
+    
+    if not item.get("title"):
+        return False
+
+    item["normalized_fragment"] = _normalize_fragment(item.get("title", ""))
+    
+    # Prepare provider tasks
+    sources = [s for s in nsub_module.DEFAULT_ENABLED if s in nsub_module.SOURCE_REGISTRY]
+    if not sources:
+        return False
+
+    search_str = get_search_string(item)
+    if " / " in search_str:
+        search_str = re.sub(r" /.*", "", search_str)
+    search_year = (item.get("year") or "").strip()
+    
+    pending_tasks = []
+    sem = asyncio.Semaphore(PROVIDER_CONCURRENCY_LIMIT)
+    # Dummy stats
+    stats = {"fetched": 0, "failed": 0, "timeouts": 0, "retries": 0}
+    provider_lock = asyncio.Semaphore(1) # Simple lock for check
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        imdb_token = item.get("imdb_id") or item.get("id") or ""
+        fragment = item.get("normalized_fragment", "")
+        
+        for source_id in sources:
+            module = nsub_module.SOURCE_REGISTRY[source_id]
+            query = nsub_module._normalise_for_source(source_id, item, search_str)
+            cache_key = nsub_module._provider_cache_key(source_id, query, search_year)
+            
+            # Check provider cache
+            cached = nsub_module.PROVIDER_CACHE.get(cache_key)
+            if cached:
+                return True
+            if nsub_module.FAILURE_CACHE.get(cache_key):
+                continue
+
+            timeout = _provider_timeout(source_id)
+            # Use a shorter timeout for the check to fail fast
+            if timeout > 2.0:
+                timeout = 2.0
+                
+            pending_tasks.append(
+                _run_provider_task(
+                    source_id=source_id,
+                    module=module,
+                    item_year=search_year,
+                    query=query,
+                    cache_key=cache_key,
+                    client=client,
+                    sem=sem,
+                    timeout=timeout,
+                    breaker_ttl=None,
+                    provider_lock=provider_lock,
+                    stats=stats,
+                    imdb_token=imdb_token,
+                    fragment=fragment,
+                )
+            )
+
+        if not pending_tasks:
+            return False
+
+        # Race the tasks!
+        for future in asyncio.as_completed(pending_tasks):
+            try:
+                _, _, result = await future
+                if result:
+                    # Found something!
+                    return True
+            except Exception:
+                pass
+    
+    return False
+
+
 async def _run_provider_task(
     *,
     source_id: str,

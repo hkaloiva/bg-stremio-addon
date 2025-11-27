@@ -256,16 +256,14 @@ async def enrich_streams_with_subtitles(
     bg_scraped = False
     if media_type and item_id and request_base:
         try:
-            url = f"{request_base}/bg/subtitles/{media_type}/{item_id}.json?limit=1"
-            # Use a short timeout for enrichment to prevent stream loading delays
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data if isinstance(data, list) else data.get("subtitles") or data.get("streams") or []
-                    if results:
-                        bg_scraped = True
-        except Exception:
+            # Direct optimized check
+            from bg_subtitles_app.src.bg_subtitles.service import check_bg_subs_availability
+            
+            # We need to pass media_type and item_id. 
+            # Note: check_bg_subs_availability expects raw_id which is item_id here.
+            bg_scraped = await check_bg_subs_availability(media_type, item_id)
+        except Exception as exc:
+            # logger.warning(f"Enrichment check failed: {exc}")
             bg_scraped = False
 
     if bg_scraped:
