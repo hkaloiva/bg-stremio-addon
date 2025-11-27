@@ -9,15 +9,8 @@ import time, random, threading, os
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .common import get_info, get_search_string, list_key, log_my, savetofile
-from . import Vlad00nMooo, subs_sab, subsland, unacs, opensubtitles, subhero
+from . import Vlad00nMooo, subs_sab, subsland, unacs, subhero
 from ..cache import TTLCache
-
-# Enable OpenSubtitles by default when configured; allow explicit opt-out via env.
-_env_flag = os.getenv("BG_SUBS_ENABLE_OPENSUBTITLES")
-if _env_flag is None:
-    _ENABLE_OPENSUB = opensubtitles.is_configured()
-else:
-    _ENABLE_OPENSUB = str(_env_flag).lower() in {"1", "true", "yes"}
 
 SOURCE_REGISTRY = {
     "unacs": unacs,
@@ -26,8 +19,6 @@ SOURCE_REGISTRY = {
     "Vlad00nMooo": Vlad00nMooo,
     "subhero": subhero,
 }
-if _ENABLE_OPENSUB:
-    SOURCE_REGISTRY["opensubtitles"] = opensubtitles
 
 DEFAULT_ENABLED = list(SOURCE_REGISTRY.keys())
 

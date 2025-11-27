@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # 0 = disabled (fastest, no subtitle detection)
     # 1 = scraper only (fast, 1-2s, checks BG subtitle availability)
     # 2 = full enrichment (slow, 20-30s, probes video files + RealDebrid)
-    default_stream_enrich_level: int = 1
+    default_stream_enrich_level: int = 0
     stream_subs_max_streams: int = 4
     
     rd_token: Optional[str] = None
