@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import timedelta
 from cache import Cache
 import api.tmdb as tmdb
+import api.tvdb as tvdb
 import translator
 from anime import kitsu, mal
 from providers import letterboxd
@@ -22,7 +23,7 @@ def open_all_cache():
     kitsu.open_cache()
     mal.open_cache()
     tmdb.open_cache()
-    tmdb.tvdb.open_cache()
+    tvdb.open_cache()
     # open_cache() # local meta cache lazy init
     translator.open_cache()
     letterboxd.open_cache()
@@ -33,7 +34,7 @@ def close_all_cache():
     kitsu.close_cache()
     mal.close_cache()
     tmdb.close_cache()
-    tmdb.tvdb.close_cache()
+    tvdb.close_cache()
     for language in meta_cache:
         meta_cache[language].close()
     translator.close_cache()
