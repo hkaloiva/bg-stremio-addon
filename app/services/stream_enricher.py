@@ -291,24 +291,23 @@ async def enrich_streams_with_subtitles(
             except Exception:
                 pass
 
-    # Prioritize streams: 1) any embedded subtitles present 2) BG subtitle match 3) everything else
+    # Prioritize streams: 1) BG Embedded 2) BG Found 3) Everything else
     def _priority(stream: dict) -> int:
         tags = stream.get("visualTags") or []
-        has_embedded = bool(stream.get("embeddedSubtitles"))
         has_bg_embedded = "bg-embedded" in tags
-        has_scraped_bg = "bg-scraped" in tags
+        
+        # Check for any indication of BG subs (scraped, metadata, or embedded list)
         has_bg = bool(
             stream.get("subs_bg")
             or ("bg-subs" in tags)
             or _subtitle_langs_has_bg(stream.get("subtitleLangs"))
         )
+
         if has_bg_embedded:
-            return 0  # Embedded BG subs
-        if has_scraped_bg or (has_bg and not has_embedded):
-            return 1  # BG via scraper/metadata only
-        if has_embedded:
-            return 2  # Embedded (non-BG)
-        return 3  # Everything else
+            return 0  # 1. BG Embedded
+        if has_bg:
+            return 1  # 2. BG Found (but not embedded)
+        return 2      # 3. Everything else
 
     indexed_sorted = sorted(enumerate(streams), key=lambda pair: (_priority(pair[1]), pair[0]))
     return [stream for _, stream in indexed_sorted]
