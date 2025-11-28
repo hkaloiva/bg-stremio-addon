@@ -3,7 +3,6 @@ from typing import Optional, List
 import os
 
 class Settings(BaseSettings):
-    model_config = {"extra": "ignore"}
     translator_version: str = "v1.1.0-golden"
     default_language: str = "bg-BG"
     force_prefix: bool = False
@@ -34,6 +33,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
     @property
     def effective_rd_token(self) -> Optional[str]:
