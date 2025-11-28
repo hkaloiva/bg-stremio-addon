@@ -1,18 +1,21 @@
 {
-   "id": "com.toast.translator",
-   "version": "1.0.6-subhero",
-   "name": "Toast Translator",
+    "id": "com.toast.translator",
+    "version": "1.1.2",
+    "name": "Toast Translator",
     "description": "Translator for catalog addons!",
     "logo": "https://i.imgur.com/1904KDj.png",
     "catalogs": [],
-    "resources": ["catalog", "meta"],
+    "resources": [
+        "catalog",
+        "meta"
+    ],
     "types": [
-        "movie", 
-        "series", 
+        "movie",
+        "series",
         "anime"
     ],
     "idPrefixes": [
-        "tt", 
+        "tt",
         "kitsu"
     ],
     "behaviorHints": {
@@ -24,5 +27,4 @@
         "issuer": "https://stremio-addons.net",
         "signature": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..sN-_8js3bSXQ0cMFJpW3Eg.FheEmu_bKboneSinVecpMBqZfjo57NdQl194EB-iDQo4v_G8bfBR6ZXPJnWDdwrNG9gkj96kSkPbj5LjbVUhOLc_ISeiLCb-BKpTUO2x7SmypPE786e2YlataKpNa66_.evPjj7HXIzsBuuETO2D51w"
     }
-
 }
