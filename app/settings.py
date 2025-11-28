@@ -3,6 +3,7 @@ from typing import Optional, List
 import os
 
 class Settings(BaseSettings):
+    model_config = {"extra": "ignore"}
     translator_version: str = "v1.1.0-golden"
     default_language: str = "bg-BG"
     force_prefix: bool = False
