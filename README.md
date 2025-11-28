@@ -1,10 +1,14 @@
-# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.0.6--subhero-blue)
+# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.0.8--opensubtitles--fix-blue)
 
 ## Live Instance
 - Public URL: `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/`
 - Wake endpoint (kept warm via GitHub Action): `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/wake`
 - Navigate via any browser; the Link Generator and installer are available directly from the root page.
-- Release: `v1.0.6-subhero` (BG subtitles: subhero external addon wired in, OpenSubtitles proxy removed, flags for embedded 🇧🇬📀 and scraped 🇧🇬 streams, multi-arch image).
+- Release: `v1.0.8-opensubtitles-fix` 
+  - ✅ OpenSubtitles flag detection (scraper fallback for unindexed titles)
+  - ✅ Level 2 stream enrichment (video probing for accurate embedded subtitle detection)
+  - ✅ Flags: 🇧🇬📀 for embedded subtitles, 🇧🇬 for scraped/OpenSubtitles availability
+  - ✅ Multi-arch Docker image (amd64/arm64)
 
 ---
 
