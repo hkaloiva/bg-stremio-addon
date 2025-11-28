@@ -16,14 +16,14 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, RedirectResponse
 
-from bg_subtitles.service import (
+from .bg_subtitles.service import (
     resolve_subtitle,
     search_subtitles,
     search_subtitles_async,
 )
-from bg_subtitles.sources.common import REQUEST_ID
-from bg_subtitles.cache import TTLCache
-from bg_subtitles.constants import (
+from .bg_subtitles.sources.common import REQUEST_ID
+from .bg_subtitles.cache import TTLCache
+from .bg_subtitles.constants import (
     DEFAULT_FORMAT,
     LANG_ISO639_2,
     LANG_ISO639_1,
