@@ -75,11 +75,19 @@ def _parse_tracks(raw: Dict) -> Optional[Dict]:
             or tags.get("Language")
         )
         lang = str(lang).strip().lower() if lang else None
+        
+        # Fallback: Check title for language if lang tag is missing
+        title = (tags.get("title") or "").strip()
+        if not lang and title:
+            lower_title = title.lower()
+            if "bulgarian" in lower_title or "bg" in lower_title.split():
+                lang = "bul"
+                
         disposition = entry.get("disposition") or {}
         tracks.append(
             {
                 "lang": lang,
-                "title": (tags.get("title") or "").strip(),
+                "title": title,
                 "default": bool(disposition.get("default")),
                 "forced": bool(disposition.get("forced")),
             }

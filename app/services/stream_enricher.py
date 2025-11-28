@@ -137,57 +137,57 @@ async def enrich_streams_with_subtitles(
         return any(l.startswith("bg") or l.startswith("bul") for l in langs)
 
     def _mark_bg_subs(stream: dict) -> None:
-        """Mark Bulgarian subtitles based on any known subtitle metadata."""
-        raw_langs = stream.get("subtitleLangs")
-        langs: List[str] = []
-        if isinstance(raw_langs, str):
-            langs.extend([lang.strip().lower() for lang in raw_langs.split(",") if lang])
-        elif isinstance(raw_langs, list):
-            langs.extend([str(lang).strip().lower() for lang in raw_langs if lang])
-
+        """Mark Bulgarian subtitles based ONLY on confirmed embedded metadata."""
         tracks = stream.get("embeddedSubtitles") or []
         bg_in_embedded = False
+        
         for track in tracks:
             lang = str((track or {}).get("lang") or "").strip().lower()
-            if lang:
-                langs.append(lang)
+            title = str((track or {}).get("title") or "").strip().lower()
+            
             if lang.startswith("bg") or lang.startswith("bul"):
                 bg_in_embedded = True
+                break
+            
+            # Extra safety check on title if lang didn't match (though probe handles this too)
+            if "bulgarian" in title:
+                bg_in_embedded = True
+                break
         
-        # Fallback: Check subtitleLangs if embeddedSubtitles didn't yield a result
-        # This is necessary because some providers (like AIOStreams) don't send detailed track info
+        # STRICT REQUIREMENT: Only flag if embedded BG is confirmed
         if not bg_in_embedded:
-             bg_in_embedded = any(l.startswith("bg") or l.startswith("bul") for l in langs)
-
-        # DEBUG LOGGING
-        if "bg" in langs or "bul" in langs:
-             print(f"DEBUG: Stream '{stream.get('name')}' | Embedded: {tracks} | Detected BG Embedded: {bg_in_embedded}")
-
-        has_bg = any(l.startswith("bg") or l.startswith("bul") for l in langs)
-        if not has_bg:
+            # Clean up any existing flags if re-processing
+            try:
+                name = str(stream.get("name") or "")
+                if "🇧🇬" in name or "💿" in name:
+                    clean_name = name.replace("🇧🇬💿", "").replace("🇧🇬", "").replace("💿", "").strip()
+                    stream["name"] = clean_name
+            except Exception:
+                pass
             return
 
+        # If we are here, embedded BG is confirmed.
         stream["subs_bg"] = True
         tags = stream.get("visualTags") or []
         if "bg-subs" not in tags:
             tags.append("bg-subs")
-        if bg_in_embedded and "bg-embedded" not in tags:
+        if "bg-embedded" not in tags:
             tags.append("bg-embedded")
         stream["visualTags"] = tags
 
-        # Inject visual hints into name/description so upstream formatting limitations are bypassed.
-        flag = "🇧🇬📀" if bg_in_embedded else "🇧🇬"
+        # Inject visual indicator (🇧🇬)
+        flag = "🇧🇬"
         try:
             name = str(stream.get("name") or "")
-            # Remove any existing flags to avoid duplication if re-processing
-            clean_name = name.replace("🇧🇬📀", "").replace("🇧🇬", "").strip()
-            stream["name"] = f"{flag} {clean_name}".strip()
+            # Avoid duplication
+            if flag not in name:
+                stream["name"] = f"{flag} {name}".strip()
         except Exception:
             pass
         try:
             desc = str(stream.get("description") or "")
-            clean_desc = desc.replace("⚑ 🇧🇬📀", "").replace("⚑ 🇧🇬", "").strip()
-            stream["description"] = f"{clean_desc} ⚑ {flag}".strip()
+            if flag not in desc:
+                stream["description"] = f"{desc} ⚑ {flag}".strip()
         except Exception:
             pass
 
@@ -296,47 +296,8 @@ async def enrich_streams_with_subtitles(
         for stream in streams:
             _mark_bg_subs(stream)
 
-    # Level 1+: Query BG subtitles scraper once per title to tag streams lacking embedded BG
-    bg_scraped = False
-    if media_type and item_id and request_base:
-        try:
-            # Direct optimized check
-            from bg_subtitles_app.src.bg_subtitles.service import check_bg_subs_availability
-            
-            # We need to pass media_type and item_id. 
-            # Note: check_bg_subs_availability expects raw_id which is item_id here.
-            bg_scraped = await check_bg_subs_availability(media_type, item_id)
-        except Exception as exc:
-            # logger.warning(f"Enrichment check failed: {exc}")
-            bg_scraped = False
-
-    if bg_scraped:
-        for stream in streams:
-            tags = stream.get("visualTags") or []
-            # Skip if already flagged via embedded/meta
-            if stream.get("subs_bg") or ("bg-subs" in tags) or ("bg-embedded" in tags):
-                continue
-            
-            stream["subs_bg"] = True
-            if "bg-subs" not in tags:
-                tags.append("bg-subs")
-            if "bg-scraped" not in tags:
-                tags.append("bg-scraped")
-            stream["visualTags"] = tags
-            
-            # Only add the plain flag if no other flag exists
-            try:
-                name = str(stream.get("name") or "")
-                if "🇧🇬" not in name and "🇧🇬📀" not in name:
-                    stream["name"] = f"🇧🇬 {name}".strip()
-            except Exception:
-                pass
-            try:
-                desc = str(stream.get("description") or "")
-                if "🇧🇬" not in desc and "🇧🇬📀" not in desc:
-                    stream["description"] = f"{desc} ⚑ 🇧🇬".strip()
-            except Exception:
-                pass
+    # Scraper check removed to comply with strict "Embedded ONLY" flagging requirement.
+    # External subtitles will not trigger any flags or indicators.
 
     # Prioritize streams: 1) BG Embedded 2) BG Found 3) Everything else
     def _priority(stream: dict) -> int:

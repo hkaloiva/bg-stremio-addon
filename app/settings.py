@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # 1 = scraper only (fast, 1-2s, checks BG subtitle availability)
     # 2 = full enrichment (optimized, 10-15s, probes top 2 video files + RealDebrid)
     default_stream_enrich_level: int = 2
-    stream_subs_max_streams: int = 2  # Probe top 2 streams for speed
+    stream_subs_max_streams: int = 5  # Probe top 5 streams for better coverage
     
     rd_token: Optional[str] = None
     realdebrid_token: Optional[str] = None
