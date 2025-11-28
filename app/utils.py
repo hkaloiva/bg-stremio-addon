@@ -1,54 +1,102 @@
 import base64
 import urllib.parse
+import socket
+from fastapi import HTTPException
 
-def decode_base64_url(encoded_url):
+def _is_safe_ip(ip: str) -> bool:
+    """Checks if an IP address is public and not reserved."""
+    if not ip:
+        return False
+    try:
+        # This will fail for invalid IP formats
+        socket.inet_aton(ip)
+        # Split IP for range checks
+        parts = [int(p) for p in ip.split('.')]
+        
+        # Private and reserved ranges
+        is_private = (
+            parts[0] == 10 or
+            parts[0] == 127 or
+            (parts[0] == 172 and 16 <= parts[1] <= 31) or
+            (parts[0] == 192 and parts[1] == 168) or
+            (parts[0] == 169 and parts[1] == 254)
+        )
+        return not is_private
+    except (socket.error, ValueError):
+        return False
+
+def _validate_addon_url(url: str):
+    """
+    Validates a URL to ensure it's safe to request.
+    Raises HTTPException for invalid or non-public URLs.
+    """
+    try:
+        parsed_url = urllib.parse.urlparse(url)
+        if parsed_url.scheme not in ['http', 'https']:
+            raise ValueError("Invalid URL scheme. Only 'http' and 'https' are allowed.")
+        
+        hostname = parsed_url.hostname
+        if not hostname:
+            raise ValueError("URL must contain a valid hostname.")
+
+        # This DNS lookup can be slow. In a high-performance scenario, consider caching.
+        ip_address = socket.gethostbyname(hostname)
+
+        if not _is_safe_ip(ip_address):
+            raise ValueError(f"URL resolves to a non-public IP address: {ip_address}")
+            
+    except (ValueError, socket.gaierror) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid or unsafe addon URL: {e}")
+
+def decode_base64_url(encoded_url: str) -> str:
+    """Decodes a base64-encoded URL."""
     padding = '=' * (-len(encoded_url) % 4)
     try:
         encoded_url += padding
-        decoded_bytes = base64.b64decode(encoded_url)
-        return decoded_bytes.decode('utf-8')
+        return base64.b64decode(encoded_url).decode('utf-8')
     except Exception:
-        # Already plain URL
+        # Return as is if it's not valid base64
         return encoded_url
 
-
 def normalize_addon_url(raw_url: str) -> str:
-    """Remove trailing manifest.json and slash, preserve query."""
+    """
+    Validates, resolves, and normalizes an addon URL.
+    Raises HTTPException for unsafe URLs.
+    """
     if not raw_url:
-        return raw_url
+        return ""
+    
+    # Security: Validate before proceeding
+    _validate_addon_url(raw_url)
+    
     try:
         parsed = urllib.parse.urlparse(raw_url)
         path = parsed.path or ""
         if path.endswith("/manifest.json"):
-            path = path[: -len("/manifest.json")]
-        normalized = parsed._replace(path=path).geturl().rstrip("/")
-        return normalized
+            path = path.removesuffix("/manifest.json")
+        
+        return parsed._replace(path=path).geturl().rstrip("/")
     except Exception:
+        # Fallback for any unexpected parsing errors
         return raw_url.rstrip("/")
 
-
 def parse_user_settings(user_settings: str) -> dict:
-    _user_settings = {}
+    """Parses a comma-separated key-value string into a dict."""
+    settings_dict = {}
     if not user_settings:
-        return _user_settings
-    parts = [s for s in user_settings.split(',') if s]
-    for setting in parts:
-        if '=' not in setting:
-            continue
-        key, value = setting.split('=', 1)
-        if not key:
-            continue
-        _user_settings[key] = value
-    return _user_settings
-
+        return settings_dict
+    
+    for part in user_settings.split(','):
+        if '=' in part:
+            key, value = part.split('=', 1)
+            if key:
+                settings_dict[key.strip()] = value.strip()
+    return settings_dict
 
 def sanitize_alias(raw_alias: str) -> str:
-    """Limit alias to safe chars for manifest.id/name."""
+    """Limits an alias to safe characters for use in manifest IDs/names."""
     if not raw_alias:
         return ""
-    alias = raw_alias.strip().lower()
-    safe = []
-    for ch in alias:
-        if ch.isalnum() or ch in ['-', '_']:
-            safe.append(ch)
-    return "".join(safe)[:40]
+    
+    safe_chars = [c for c in raw_alias.strip().lower() if c.isalnum() or c in ['-', '_']]
+    return "".join(safe_chars)[:40]

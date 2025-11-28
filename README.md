@@ -1,61 +1,41 @@
-# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.0.9--performance-brightgreen)
+# Bulgarian Stremio Addon: Translator & Subtitles
 
-## Live Instance
-- Public URL: `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/`
-- Wake endpoint (kept warm via GitHub Action): `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/wake`
-- Navigate via any browser; the Link Generator and installer are available directly from the root page.
-- Release: `v1.0.9-performance` 
-  - ⚡ **50% faster stream loading** (10-15s vs 25-30s)
-  - ✅ OpenSubtitles flag detection (scraper fallback for unindexed titles)
-  - ✅ Optimized Level 2 enrichment (smart stream selection, parallel processing)
-  - ✅ Flags: 🇧🇬📀 for embedded subtitles, 🇧🇬 for scraped/OpenSubtitles availability
-  - ✅ Multi-arch Docker image (amd64/arm64)
+This is a multi-purpose Stremio addon designed for Bulgarian users, combining metadata translation and comprehensive Bulgarian subtitle support.
 
----
+## Features
 
-## 📚 Compatible catalogs
-- 🎬 [Cinemeta](https://v3-cinemeta.strem.io/manifest.json)
-- 🏛️ [Public Domains](https://caching.stremio.net/manifest.json)
-- 📺 [Streaming Catalogs](https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/configure)
-- 🎥 [IMDB Catalogs](https://1fe84bc728af-imdb-catalogs.baby-beamup.club/manifest.json)
-- 🍅 [Rotten Tomatoes Catalogs](https://7a82163c306e-rottentomatoes.baby-beamup.club/manifest.json)
-- 🎭 [Trakt](https://trakt.dexter21767.com/configure/)
-- 🍣 [Anime Kitsu](https://anime-kitsu.strem.fun/manifest.json)
-- 🍜 [Anime Catalogs](https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/configure)
-- 🦸‍♂️ [Marvel Catalogs](https://addon-marvel.onrender.com/manifest.json)
-- 🎞️ [Letterboxd](https://letterboxd.almosteffective.com/configure)
-- 📦 [Stremthru lists bundle](https://stremthru.elfhosted.com/)
+This addon bundles two main functionalities:
 
----
+1.  **Toast Translator Engine**:
+    *   Acts as a proxy to other Stremio addons, translating catalog information (titles, descriptions) into your selected language (defaulting to Bulgarian).
+    *   Enriches stream results with flags indicating Bulgarian subtitle availability (🇧🇬).
+    *   Supports a wide range of popular catalogs like Cinemeta, Trakt, Letterboxd, and various anime catalogs.
 
-## 🔧 How to translate
-1. 📥 Install the original catalog (e.g., Cinemeta)
-2. 🔑 Log in on the configuration page
-3. ✅ Select the catalogs you want to translate
-4. 🎉 Click Apply and you're done!
+2.  **Bundled Bulgarian Subtitles**:
+    *   Integrates a full-featured Bulgarian subtitles addon.
+    *   Provides Bulgarian subtitles for movies and series from various sources.
 
----
+## How to Install
 
-## ❓ Configuration Notes
-- 🖼️ **RPDB** → RPDB posters in English with free key, in selected language if tier is greater than 0
-- ⭐ **Toast Ratings** → free posters with ratings in selected language
+1.  Navigate to the addon's homepage (the root URL where it's hosted).
+2.  Use the configuration interface to select the catalogs you want to translate.
+3.  If you are logged into Stremio, you can install addons directly from your account.
+4.  Alternatively, use the "Link Generator" to create a custom installation URL for any addon.
+5.  Install the generated addon link in Stremio.
 
----
+## How It Works
 
-## 🔐 Why log in?
-- You can log in to load and install addons installed on your account.
-- No personal data is stored outside of Stremio
-- If you don't want to log in, you can use the Link Generator 🧩
+This addon doesn't provide content itself. Instead, it wraps around your existing Stremio addons. When you install a "translated" version of an addon (e.g., Cinemeta), this service fetches the original data, translates the text fields, and then serves the modified manifest and metadata to your Stremio app. This allows you to browse familiar catalogs in your preferred language.
 
----
+## Configuration
 
-## 🧩 Link Generator
-If you don't want to log in, you can use the [Link Generator](https://0f693ad7dcba-toast-translator.baby-beamup.club/link_generator) to generate addon installation URLs.
+You can customize the addon's behavior through the configuration page:
 
----
+-   **Language**: Choose the target language for translation.
+-   **Alias**: Create multiple translated versions of the same addon by giving each a unique alias.
+-   **Poster Settings**: Configure poster translations and ratings from services like RPDB.
 
-## 🙏 Credits / Thanks
-Special thanks to the following repositories which were used to map anime IDs:  
-- [Fribb / anime-lists](https://github.com/Fribb/anime-lists)  
-- [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs)
-- Original addon created by [@diogomiguel93](https://github.com/diogomiguel93)
+## Credits
+
+-   The original translation addon concept was created by [@diogomiguel93](https://github.com/diogomiguel93).
+-   Anime ID mapping lists are sourced from [Fribb / anime-lists](https://github.com/Fribb/anime-lists) and [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs).

@@ -2,14 +2,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
-import os
-import sys
 import json
 import logging
 
-# Ensure bundled bg_subtitles is importable
-# We assume we are running from toast-translator root
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "bg_subtitles_app", "src"))
+# Assuming 'bg_subtitles_app.src.app' is a mountable FastAPI app
+from bg_subtitles_app.src.app import app as bg_app
 
 from app.settings import settings
 from app.logger import setup_logging
@@ -41,15 +38,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Mount local BG subtitles (0.2.8) under /bg
+# Mount local BG subtitles under /bg
 try:
-    import importlib.util
-    bg_app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bg_subtitles_app", "src", "app.py")
-    spec = importlib.util.spec_from_file_location("bg_subtitles_app_module", bg_app_path)
-    bg_subtitles_module = importlib.util.module_from_spec(spec)
-    sys.modules["bg_subtitles_app_module"] = bg_subtitles_module
-    spec.loader.exec_module(bg_subtitles_module)
-    bg_app = bg_subtitles_module.app
     app.mount("/bg", bg_app)
 except Exception as exc:
     logger.error("Failed to mount bg subtitles app: %s", exc)

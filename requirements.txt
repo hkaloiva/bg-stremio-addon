@@ -1,6 +1,7 @@
-httpx
-fastapi
-uvicorn
+# Core Dependencies
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+httpx==0.27.0
 jinja2
 diskcache
 cachetools
@@ -14,17 +15,13 @@ py7zr==0.21.0
 charset-normalizer==3.4.4
 prometheus-client==0.20.0
 guessit==3.8.0
-aiohttp==3.10.5
-psutil==6.1.0
+aiohttp==3.9.5
+psutil==5.9.8
 chardet==5.2.0
-
-# bg subtitles
--r ./bg_subtitles_app/requirements.txt
 pydantic
 pydantic-settings
 
-# Development tools
+# Development Tools
 ruff
 pytest
 pytest-asyncio
-
