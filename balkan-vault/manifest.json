@@ -1,0 +1,34 @@
+{
+    "id": "com.balkan.vault",
+    "version": "0.0.1",
+    "name": "Balkan Vault",
+    "description": "Bulgarian Private Tracker Catalog & Streamer",
+    "resources": [
+        "catalog",
+        "stream"
+    ],
+    "types": [
+        "movie",
+        "series"
+    ],
+    "catalogs": [
+        {
+            "type": "movie",
+            "id": "balkan_movies",
+            "name": "Balkan Movies (BG Audio)"
+        },
+        {
+            "type": "series",
+            "id": "balkan_series",
+            "name": "Balkan Series (BG Audio)"
+        }
+    ],
+    "idPrefixes": [
+        "tt"
+    ],
+    "behaviorHints": {
+        "configurable": true,
+        "configurationRequired": true
+    },
+    "logo": "https://raw.githubusercontent.com/hkaloiva/bg-stremio-addon/main/static/img/logo.png"
+}
