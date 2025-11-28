@@ -195,13 +195,14 @@ async def enrich_streams_with_subtitles(
     if enrich_level >= 2:
         logger.info(f"Stream enrichment level 2: Full probing for {len(streams)} streams")
         
-        # Attempt to resolve magnet-only streams via Real-Debrid to obtain a direct URL for probing
-        for stream in streams:
+        # Parallelize RealDebrid resolution for magnets
+        async def _resolve_stream_magnet(stream: dict) -> None:
+            """Resolve a single stream's magnet to direct URL via RealDebrid."""
             if stream.get("url"):
-                continue
+                return
             info_hash = stream.get("infoHash") or stream.get("info_hash")
             if not info_hash:
-                continue
+                return
             try:
                 file_idx = None
                 raw_idx = stream.get("fileIdx")
@@ -213,26 +214,59 @@ async def enrich_streams_with_subtitles(
                 resolved = await _resolve_with_rd(info_hash, file_idx)
                 if resolved:
                     stream["url"] = resolved
-                    # Mark as resolved for downstream awareness
                     stream.setdefault("behaviorHints", {})
                     stream["behaviorHints"]["rdResolved"] = True
             except Exception:
-                continue
+                pass
+        
+        # Process all magnet resolutions in parallel
+        magnet_streams = [s for s in streams if not s.get("url") and (s.get("infoHash") or s.get("info_hash"))]
+        if magnet_streams:
+            await asyncio.gather(*[_resolve_stream_magnet(s) for s in magnet_streams], return_exceptions=True)
 
         # Honor any subtitle metadata already present (e.g., upstream provided subtitleLangs/embeddedSubtitles)
         for stream in streams:
             _mark_bg_subs(stream)
 
+        # Smart stream selection: Prioritize high-quality streams for probing
+        def _stream_quality_score(stream: dict) -> int:
+            """Score stream by quality to prioritize better streams for probing."""
+            name = str(stream.get("name") or "").lower()
+            score = 0
+            
+            # Resolution priority
+            if "2160p" in name or "4k" in name:
+                score += 40
+            elif "1440p" in name:
+                score += 30
+            elif "1080p" in name:
+                score += 20
+            elif "720p" in name:
+                score += 10
+                
+            # Quality tags
+            if "remux" in name or "bluray" in name:
+                score += 15
+            elif "web-dl" in name or "webdl" in name:
+                score += 10
+            elif "webrip" in name:
+                score += 5
+                
+            # Prefer torrents over magnets (already have URL)
+            if stream.get("url"):
+                score += 25
+                
+            return score
+        
+        # Sort streams by quality score (descending) and select top N for probing
+        probeable_streams = [s for s in streams if s.get("url") and s["url"].lower().startswith(("http://", "https://"))]
+        probeable_streams.sort(key=_stream_quality_score, reverse=True)
+        
         tasks = []
-        targets = []
-        for stream in streams:
-            url = stream.get("url")
-            if not url or not url.lower().startswith(("http://", "https://")):
-                continue
-            if len(targets) >= settings.stream_subs_max_streams:
-                break
-            targets.append(stream)
-            tasks.append(asyncio.create_task(stream_probe.probe(url)))
+        targets = probeable_streams[:settings.stream_subs_max_streams]
+        
+        for stream in targets:
+            tasks.append(asyncio.create_task(stream_probe.probe(stream["url"])))
 
         if tasks:
             results = await asyncio.gather(*tasks)
