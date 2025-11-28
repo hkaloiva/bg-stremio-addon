@@ -11,8 +11,8 @@ from cache import Cache
 PROBE_ENABLED = (os.getenv("STREAM_SUBS_PROBE") or "1").strip().lower() in {"1", "true", "yes"}
 PROBE_TIMEOUT = float(os.getenv("STREAM_SUBS_TIMEOUT", "10.0"))
 PROBE_CONCURRENCY = int(os.getenv("STREAM_SUBS_CONCURRENCY", "5"))
-PROBE_ANALYZEDURATION = os.getenv("STREAM_SUBS_ANALYZEDURATION", "5000000")  # microseconds
-PROBE_PROBESIZE = os.getenv("STREAM_SUBS_PROBESIZE", "5000000")  # bytes
+PROBE_ANALYZEDURATION = os.getenv("STREAM_SUBS_ANALYZEDURATION", "2000000")  # microseconds
+PROBE_PROBESIZE = os.getenv("STREAM_SUBS_PROBESIZE", "1000000")  # bytes
 PROBE_CACHE_TTL = int(os.getenv("STREAM_SUBS_CACHE_TTL", str(6 * 60 * 60)))
 
 _cache = Cache("./cache/global/stream_subs/tmp", expires=PROBE_CACHE_TTL)
