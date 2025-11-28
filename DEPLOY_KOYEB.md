@@ -34,7 +34,7 @@ Example:
 1. ✅ Checks for uncommitted changes and commits them
 2. ⬆️ Pushes to GitHub
 3. 📦 Creates a Koyeb archive (ignores node_modules, cache, etc.)
-4. 🐳 Deploys using `Dockerfile.koyeb`
+4. 🐳 Deploys using `Dockerfile`
 5. 📊 Shows deployment ID
 
 ---
@@ -64,7 +64,7 @@ koyeb archives create . \
 koyeb services update <SERVICE_ID> \
   --archive <ARCHIVE_ID> \
   --archive-builder docker \
-  --docker Dockerfile.koyeb
+  --docker Dockerfile
 ```
 
 ---

@@ -45,11 +45,7 @@ echo "⬆️  Pushing to GitHub..."
 echo "⬆️  Pushing to GitHub (optional)..."
 git push origin main || echo "⚠️ Git push failed, continuing with direct archive deployment..."
 
-# Temporarily swap Dockerfile for the archive
-if [[ -f Dockerfile ]]; then
-  mv Dockerfile Dockerfile.bak
-fi
-cp Dockerfile.koyeb Dockerfile
+
 
 echo "☁️  Creating Koyeb archive..."
 ARCHIVE_JSON=$(koyeb archives create . \
@@ -59,14 +55,10 @@ ARCHIVE_JSON=$(koyeb archives create . \
   --ignore-dir __pycache__ \
   --ignore-dir cache \
   --ignore-dir tests \
-  --ignore-dir Dockerfile.bak \
+
   -o json)
 
-# Restore Dockerfile
-rm Dockerfile
-if [[ -f Dockerfile.bak ]]; then
-  mv Dockerfile.bak Dockerfile
-fi
+
 
 ARCHIVE_ID=$(echo "${ARCHIVE_JSON}" | jq -r '.archive.id')
 echo "✅ Archive created: ${ARCHIVE_ID}"

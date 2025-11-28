@@ -29,7 +29,7 @@ fi
 
 echo " redeploying with Docker image..."
 koyeb services update "${SERVICE_ID}" \
-  --docker "greenbluegreen/toast-translator:v1.0.6-subhero" \
+  --docker "greenbluegreen/toast-translator:v1.1.0-golden" \
   -o json | jq -r '.latest_deployment_id'
 
 echo ""

@@ -203,7 +203,7 @@ async def request_id_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------
 MANIFEST = {
     "id": "bg.subtitles.stremio",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Bulgarian Subtitles",
     "description": "Aggregates Bulgarian subtitles from popular sources",
     "catalogs": [],
