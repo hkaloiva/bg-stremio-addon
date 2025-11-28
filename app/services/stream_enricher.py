@@ -4,6 +4,12 @@ import time
 from typing import List, Optional, Dict
 from app.settings import settings
 from app.logger import logger
+from app.constants import (
+    BULGARIAN_FLAG,
+    ENRICH_LEVEL_DISABLED,
+    ENRICH_LEVEL_SCRAPER_ONLY,
+    ENRICH_LEVEL_FULL_PROBE
+)
 import stream_probe
 
 async def _rd_unrestrict(client: httpx.AsyncClient, link: str) -> Optional[str]:
@@ -124,8 +130,8 @@ async def enrich_streams_with_subtitles(
         enrich_level = settings.default_stream_enrich_level
     
     # Level 0: No enrichment, return as-is
-    if enrich_level == 0:
-        logger.info(f"Stream enrichment disabled (level=0), returning {len(streams)} streams as-is")
+    if enrich_level == ENRICH_LEVEL_DISABLED:
+        logger.info(f"Stream enrichment disabled (level={ENRICH_LEVEL_DISABLED}), returning {len(streams)} streams as-is")
         return streams
 
     def _subtitle_langs_has_bg(raw_langs) -> bool:
@@ -176,7 +182,7 @@ async def enrich_streams_with_subtitles(
         stream["visualTags"] = tags
 
         # Inject visual indicator (🇧🇬)
-        flag = "🇧🇬"
+        flag = BULGARIAN_FLAG
         try:
             name = str(stream.get("name") or "")
             # Avoid duplication
@@ -192,7 +198,7 @@ async def enrich_streams_with_subtitles(
             pass
 
     # Level 2: Full enrichment with video probing and RealDebrid
-    if enrich_level >= 2:
+    if enrich_level >= ENRICH_LEVEL_FULL_PROBE:
         logger.info(f"Stream enrichment level 2: Full probing for {len(streams)} streams")
         
         # Parallelize RealDebrid resolution for magnets
@@ -292,7 +298,7 @@ async def enrich_streams_with_subtitles(
                 _mark_bg_subs(stream)
     else:
         # Level 1: Only check upstream metadata, no probing
-        logger.info(f"Stream enrichment level 1: Scraper check only (no video probing)")
+        logger.info(f"Stream enrichment level {ENRICH_LEVEL_SCRAPER_ONLY}: Scraper check only (no video probing)")
         for stream in streams:
             _mark_bg_subs(stream)
 

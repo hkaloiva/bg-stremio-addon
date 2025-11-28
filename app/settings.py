@@ -3,6 +3,16 @@ from typing import Optional, List
 import os
 
 class Settings(BaseSettings):
+    """Toast Translator Application Settings.
+    
+    All settings can be overridden via environment variables or .env file.
+    Environment variables should use uppercase names (e.g., DEFAULT_LANGUAGE=bg-BG).
+    
+    Stream Enrichment Levels:
+        0 = Disabled (fastest, no subtitle detection)
+        1 = Scraper only (fast, 1-2s, checks BG subtitle availability)
+        2 = Full enrichment (10-15s, probes top streams + RealDebrid resolution)
+    """
     translator_version: str = "v1.1.0-golden"
     default_language: str = "bg-BG"
     force_prefix: bool = False
@@ -37,6 +47,13 @@ class Settings(BaseSettings):
 
     @property
     def effective_rd_token(self) -> Optional[str]:
-        return self.rd_token or self.realdebrid_token or "EIWFM2CK35TX3MTMFPV6D7DNJIXQFIZDWDCHD5ZFL5A3ELPKBR5A"
+        """Get RealDebrid token from environment or return None if not configured."""
+        token = self.rd_token or self.realdebrid_token
+        if not token:
+            # Log warning only once per session
+            import logging
+            logger = logging.getLogger("toast-translator")
+            logger.warning("No RealDebrid token configured. Stream resolution will be limited.")
+        return token
 
 settings = Settings()

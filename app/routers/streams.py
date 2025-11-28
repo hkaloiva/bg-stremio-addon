@@ -8,21 +8,42 @@ from app.services.stream_enricher import enrich_streams_with_subtitles
 
 router = APIRouter()
 
-@router.get('/{addon_url}/{user_settings}/stream/{path:path}')
-async def get_stream(addon_url: str, user_settings: str, path: str, request: Request):
+@router.get('/{addon_url}/{user_settings}/stream/{path:path}', response_model=None)
+async def get_stream(
+    addon_url: str, 
+    user_settings: str, 
+    path: str, 
+    request: Request
+):
+    """Proxy stream requests and enrich with Bulgarian subtitle detection.
+    
+    Args:
+        addon_url: Base64-encoded upstream addon URL
+        user_settings: Comma-separated user configuration (e.g., 'enrich=1,language=bg')
+        path: Stream path (e.g., 'movie/tt1234567.json')
+        request: FastAPI request object
+        
+    Returns:
+        JSONResponse with enriched stream data or error Response
+    """
     from app.utils import parse_user_settings
+    from app.logger import logger
     
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     query = dict(request.query_params)
     
     # Parse user settings for enrich level
     settings_dict = parse_user_settings(user_settings)
-    enrich_level = None
+    enrich_level: int | None = None
     try:
         if 'enrich' in settings_dict:
-            enrich_level = int(settings_dict['enrich'])
-    except (ValueError, TypeError):
-        enrich_level = None
+            raw_level = int(settings_dict['enrich'])
+            if 0 <= raw_level <= 2:
+                enrich_level = raw_level
+            else:
+                logger.warning(f"Invalid enrich level {raw_level} (must be 0-2), using default")
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Failed to parse enrich level: {e}")
     
     async with httpx.AsyncClient(follow_redirects=True, timeout=settings.request_timeout) as client:
         upstream = await client.get(f"{addon_url}/stream/{path}", params=query)

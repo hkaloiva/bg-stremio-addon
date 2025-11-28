@@ -1,14 +1,27 @@
 import base64
 import urllib.parse
 
-def decode_base64_url(encoded_url):
-    padding = '=' * (-len(encoded_url) % 4)
+def decode_base64_url(encoded_url: str) -> str:
+    """Decode a base64-encoded URL or return the original if not base64.
+    
+    Args:
+        encoded_url: Potentially base64-encoded URL string
+        
+    Returns:
+        Decoded URL string or original if decoding fails
+    """
     try:
-        encoded_url += padding
-        decoded_bytes = base64.b64decode(encoded_url)
-        return decoded_bytes.decode('utf-8')
+        # Add padding if needed
+        padding = '=' * (-len(encoded_url) % 4)
+        padded_url = encoded_url + padding
+        decoded_bytes = base64.b64decode(padded_url)
+        decoded = decoded_bytes.decode('utf-8')
+        # Only return decoded if it looks like a valid URL
+        if decoded.startswith(('http://', 'https://')):
+            return decoded
+        return encoded_url
     except Exception:
-        # Already plain URL
+        # Already plain URL or invalid base64
         return encoded_url
 
 

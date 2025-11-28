@@ -25,3 +25,12 @@ tmdb_addons_pool = [
 ]
 
 cinemeta_url = 'https://v3-cinemeta.strem.io'
+
+# Stream enrichment constants
+BULGARIAN_FLAG = "🇧🇬"
+DISC_ICON = "💿"
+MAX_STREAM_NAME_LENGTH = 32
+ENRICH_LEVEL_DISABLED = 0
+ENRICH_LEVEL_SCRAPER_ONLY = 1
+ENRICH_LEVEL_FULL_PROBE = 2
+

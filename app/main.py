@@ -41,18 +41,16 @@ app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Mount local BG subtitles (0.2.8) under /bg
+# Mount local BG subtitles under /bg
 try:
-    import importlib.util
-    bg_app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bg_subtitles_app", "src", "app.py")
-    spec = importlib.util.spec_from_file_location("bg_subtitles_app_module", bg_app_path)
-    bg_subtitles_module = importlib.util.module_from_spec(spec)
-    sys.modules["bg_subtitles_app_module"] = bg_subtitles_module
-    spec.loader.exec_module(bg_subtitles_module)
-    bg_app = bg_subtitles_module.app
+    # bg_subtitles_app is already in sys.path from line 12
+    from bg_subtitles_app.src.app import app as bg_app
     app.mount("/bg", bg_app)
+    logger.info("Successfully mounted BG subtitles app at /bg")
+except ImportError as exc:
+    logger.error("Failed to import bg subtitles app: %s. Check sys.path configuration.", exc)
 except Exception as exc:
-    logger.error("Failed to mount bg subtitles app: %s", exc)
+    logger.error("Unexpected error mounting bg subtitles app: %s", exc)
 
 # Include Routers
 app.include_router(configure.router)
@@ -71,9 +69,23 @@ async def get_poster_placeholder():
 
 # Languages
 @app.get('/languages.json')
-async def get_languages():
-    with open("languages/languages.json", "r", encoding="utf-8") as f:
-        return JSONResponse(content=json.load(f), headers=cloudflare_cache_headers)
+async def get_languages() -> JSONResponse:
+    """Return available language translations."""
+    try:
+        with open("languages/languages.json", "r", encoding="utf-8") as f:
+            return JSONResponse(content=json.load(f), headers=cloudflare_cache_headers)
+    except FileNotFoundError:
+        logger.error("Languages file not found at languages/languages.json")
+        return JSONResponse(
+            content={"error": "Languages file not found"}, 
+            status_code=404
+        )
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid languages JSON: {e}")
+        return JSONResponse(
+            content={"error": "Invalid languages file"}, 
+            status_code=500
+        )
 
 # Health check
 @app.get('/healthz')
