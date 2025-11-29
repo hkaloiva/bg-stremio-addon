@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
-from cache import Cache
-from api import tmdb
+from src.translator_app.cache import Cache
+from src.translator_app.api import tmdb
 
 LETTERBOXD_RESOLVE_BASE = "https://lbxd-id.almosteffective.com/letterboxd"
 LETTERBOXD_ADDON_BASE = "https://letterboxd.almosteffective.com"

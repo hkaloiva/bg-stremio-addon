@@ -1,12 +1,12 @@
 from pathlib import Path
 from datetime import timedelta
-from cache import Cache
-import api.tmdb as tmdb
-import api.tvdb as tvdb
-import translator
-from anime import kitsu, mal
-from providers import letterboxd
-import stream_probe
+from src.translator_app.cache import Cache
+from src.translator_app.api import tmdb
+from src.translator_app.api import tvdb
+from src.translator_app import translator
+from src.translator_app.anime import kitsu, mal
+from src.translator_app.providers import letterboxd
+from src.translator_app import stream_probe
 
 # Cache set
 meta_cache = {}

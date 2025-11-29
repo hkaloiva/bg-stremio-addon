@@ -10,10 +10,10 @@ from src.translator_app.templates import templates
 from src.translator_app.cache_manager import (
     open_all_cache, close_all_cache, get_cache_length as get_meta_cache_length
 )
-import api.tmdb as tmdb
-import translator
-from anime import kitsu, mal, anime_mapping
-from providers import letterboxd
+from src.translator_app.api import tmdb
+from src.translator_app import translator
+from src.translator_app.anime import kitsu, mal, anime_mapping
+from src.translator_app.providers import letterboxd
 
 router = APIRouter()
 

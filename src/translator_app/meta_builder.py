@@ -1,11 +1,10 @@
-from api import tmdb
-from api import tvdb
-from api import fanart
-from anime import kitsu
+from src.translator_app.api import tmdb, tvdb, fanart
+from src.translator_app.anime import kitsu, mal
+from src.translator_app.providers import letterboxd
+from src.translator_app import translator
 import httpx
 import asyncio
 import urllib.parse
-import translator
 import math
 import json
 
@@ -15,7 +14,12 @@ TMDB_ERROR_EPISODE_OFFSET = 50
 MAX_TRANSLATE_EPISODES = 20
 
 # Load TMDB exceptions
-with open("anime/tmdb_exceptions.json", "r", encoding="utf-8") as f:
+# Load TMDB exceptions
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+tmdb_exceptions_path = os.path.join(current_dir, "anime", "tmdb_exceptions.json")
+
+with open(tmdb_exceptions_path, "r", encoding="utf-8") as f:
     TMDB_EXCEPTIONS = json.load(f) 
 
 async def build_metadata(imdb_id: str, type: str, language: str, tmdb_key: str):

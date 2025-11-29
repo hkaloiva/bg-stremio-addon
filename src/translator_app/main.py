@@ -15,7 +15,7 @@ from src.translator_app.settings import settings
 from src.translator_app.logger import setup_logging
 from src.translator_app.constants import cloudflare_cache_headers
 from src.translator_app.cache_manager import open_all_cache, close_all_cache
-from anime import kitsu, mal, anime_mapping
+from src.translator_app.anime import kitsu, mal, anime_mapping
 
 from src.translator_app.routers import manifest, catalog, meta, configure, subtitles, streams, dashboard
 
@@ -39,7 +39,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files
+current_dir = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(current_dir, "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Mount local BG subtitles under /bg
 try:
@@ -65,14 +68,15 @@ app.include_router(dashboard.router)
 @app.get('/favicon.ico')
 @app.get('/addon-logo.png')
 async def get_poster_placeholder():
-    return FileResponse("static/img/toast-translator-logo.png", media_type="image/png")
+    return FileResponse(os.path.join(static_dir, "img", "toast-translator-logo.png"), media_type="image/png")
 
 # Languages
 @app.get('/languages.json')
 async def get_languages() -> JSONResponse:
     """Return available language translations."""
     try:
-        with open("languages/languages.json", "r", encoding="utf-8") as f:
+        languages_path = os.path.join(current_dir, "languages", "languages.json")
+        with open(languages_path, "r", encoding="utf-8") as f:
             return JSONResponse(content=json.load(f), headers=cloudflare_cache_headers)
     except FileNotFoundError:
         logger.error("Languages file not found at languages/languages.json")

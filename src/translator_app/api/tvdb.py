@@ -1,4 +1,4 @@
-from cache import Cache
+from src.translator_app.cache import Cache
 from datetime import timedelta
 import httpx
 import asyncio
@@ -17,7 +17,12 @@ IMAGE_URL = "https://thetvdb.com"
 EPISODE_PAGE = 500
 
 # TVDB language map
-with open("languages/lang_tvdb.json", "r", encoding="utf-8") as f:
+# TVDB language map
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+languages_path = os.path.join(current_dir, "..", "languages", "lang_tvdb.json")
+
+with open(languages_path, "r", encoding="utf-8") as f:
     LANGUAGE_MAP = json.load(f) 
 
 

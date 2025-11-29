@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import Dict, List, Optional
 
-from cache import Cache
+from src.translator_app.cache import Cache
 
 # Feature toggle and tuning knobs
 PROBE_ENABLED = (os.getenv("STREAM_SUBS_PROBE") or "1").strip().lower() in {"1", "true", "yes"}

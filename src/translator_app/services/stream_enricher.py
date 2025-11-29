@@ -10,7 +10,7 @@ from src.translator_app.constants import (
     ENRICH_LEVEL_SCRAPER_ONLY,
     ENRICH_LEVEL_FULL_PROBE
 )
-import stream_probe
+from src.translator_app import stream_probe
 
 async def _rd_unrestrict(client: httpx.AsyncClient, link: str) -> Optional[str]:
     try:

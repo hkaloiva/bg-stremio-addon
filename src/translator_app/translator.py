@@ -1,6 +1,6 @@
-from cache import Cache
+from src.translator_app.cache import Cache
 from pathlib import Path
-import api.tmdb as tmdb
+from src.translator_app.api import tmdb
 import urllib.parse
 import asyncio
 import httpx
@@ -8,11 +8,17 @@ import json
 import os
 
 # Load languages
-with open("languages/languages.json", "r", encoding="utf-8") as f:
+# Load languages
+current_dir = os.path.dirname(os.path.abspath(__file__))
+languages_path = os.path.join(current_dir, "languages", "languages.json")
+lang_flags_path = os.path.join(current_dir, "languages", "lang_flags.json")
+lang_episode_path = os.path.join(current_dir, "languages", "lang_episode.json")
+
+with open(languages_path, "r", encoding="utf-8") as f:
     LANGUAGES = json.load(f) 
-with open("languages/lang_flags.json", "r", encoding="utf-8") as f:
+with open(lang_flags_path, "r", encoding="utf-8") as f:
     LANGUAGE_FLAGS = json.load(f) 
-with open("languages/lang_episode.json", "r", encoding="utf-8") as f:
+with open(lang_episode_path, "r", encoding="utf-8") as f:
     EPISODE_TRANSLATIONS = json.load(f) 
 
 # Cache set

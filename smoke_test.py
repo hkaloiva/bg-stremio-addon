@@ -7,16 +7,9 @@ from unittest.mock import MagicMock
 import importlib.util
 
 # Add src to path so internal imports work
-sys.path.append(os.path.join(os.getcwd(), "bg_subtitles_app", "src"))
+sys.path.append(os.path.join(os.getcwd(), "src"))
 
-# Load bg_subtitles_app/src/app.py dynamically to avoid collision with local 'app' package
-bg_app_path = os.path.join(os.getcwd(), "bg_subtitles_app", "src", "app.py")
-spec = importlib.util.spec_from_file_location("bg_subtitles_app_module", bg_app_path)
-bg_app = importlib.util.module_from_spec(spec)
-sys.modules["bg_subtitles_app_module"] = bg_app
-spec.loader.exec_module(bg_app)
-
-_build_subtitles_response = bg_app._build_subtitles_response
+from src.bg_subtitles_app.app import _build_subtitles_response
 
 async def run_test():
     print("Running smoke test for Incredibles 2 (tt3606756)...")

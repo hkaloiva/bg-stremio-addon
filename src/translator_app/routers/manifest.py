@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 import httpx
 import json
 import asyncio
-import translator
+from src.translator_app import translator
 from src.translator_app.settings import settings
 from src.translator_app.constants import cloudflare_cache_headers
 from src.translator_app.utils import normalize_addon_url, decode_base64_url, parse_user_settings, sanitize_alias

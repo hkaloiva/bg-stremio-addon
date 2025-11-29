@@ -12,11 +12,16 @@ anime_db_map_url = 'https://raw.githubusercontent.com/Kometa-Team/Anime-IDs/mast
 anime_season_map = None
 
 # Load anidb Extension from file
-with open("anime/anidb_extension.json", "r", encoding="utf-8") as f:
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+anidb_extension_path = os.path.join(current_dir, "anidb_extension.json")
+anime_mapping_extension_path = os.path.join(current_dir, "anime_mapping_extension.json")
+
+with open(anidb_extension_path, "r", encoding="utf-8") as f:
     anidb_extension = json.load(f) 
 
 # Load anime mapping Extension from file
-with open("anime/anime_mapping_extension.json", "r", encoding="utf-8") as f:
+with open(anime_mapping_extension_path, "r", encoding="utf-8") as f:
     anime_mapping_extension = json.load(f) 
 
 async def download_maps():

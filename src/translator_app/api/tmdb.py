@@ -1,4 +1,4 @@
-from cache import Cache
+from src.translator_app.cache import Cache
 from datetime import timedelta
 from collections import defaultdict
 import httpx
@@ -16,7 +16,12 @@ TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 TMDB_SEMAPHORES = defaultdict(lambda: asyncio.Semaphore(50))
 
 # Load languages
-with open("languages/languages.json", "r", encoding="utf-8") as f:
+# Load languages
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+languages_path = os.path.join(current_dir, "..", "languages", "languages.json")
+
+with open(languages_path, "r", encoding="utf-8") as f:
     LANGUAGES = json.load(f) 
 
 # Cache set

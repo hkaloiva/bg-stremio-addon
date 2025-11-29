@@ -29,7 +29,7 @@ async def test_get_catalog_success(client):
         mock_get.return_value = mock_response
 
         # Mock the TMDB response
-        with patch('api.tmdb.get_tmdb_data', new_callable=AsyncMock) as mock_tmdb:
+        with patch('src.translator_app.api.tmdb.get_tmdb_data', new_callable=AsyncMock) as mock_tmdb:
             mock_tmdb.return_value = {
                 "movie_results": [
                     {

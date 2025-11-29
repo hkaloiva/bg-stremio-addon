@@ -1,4 +1,4 @@
-from anime import kitsu, mal
+from src.translator_app.anime import kitsu, mal
 
 async def remove_duplicates(catalog) -> None:
     unique_items = []

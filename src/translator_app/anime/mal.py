@@ -1,7 +1,8 @@
-from cache import Cache
+from src.translator_app.cache import Cache
 from datetime import timedelta
 import httpx
-import anime.anime_mapping as anime_mapping
+import re
+from src.translator_app.anime import anime_mapping
 
 kitsu_addon_url = 'https://anime-kitsu.strem.fun'
 

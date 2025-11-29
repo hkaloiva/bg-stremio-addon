@@ -5,12 +5,12 @@ import asyncio
 from src.translator_app.settings import settings
 from src.translator_app.constants import cloudflare_cache_headers, tmdb_addons_pool, cinemeta_url
 from src.translator_app.utils import normalize_addon_url, decode_base64_url, parse_user_settings
-from api import tmdb
-from anime import kitsu, mal
-from providers import letterboxd
-import meta_builder
-import meta_merger
-import translator
+from src.translator_app.api import tmdb
+from src.translator_app.anime import kitsu, mal
+from src.translator_app.providers import letterboxd
+from src.translator_app import meta_builder
+from src.translator_app import meta_merger
+from src.translator_app import translator
 
 router = APIRouter()
 

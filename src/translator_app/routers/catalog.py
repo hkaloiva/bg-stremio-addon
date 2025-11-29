@@ -8,9 +8,9 @@ from src.translator_app.settings import settings
 from src.translator_app.constants import cloudflare_cache_headers
 from src.translator_app.utils import normalize_addon_url, decode_base64_url, parse_user_settings
 from src.translator_app.services.anime_utils import remove_duplicates
-from api import tmdb
-from providers import letterboxd
-import translator
+from src.translator_app.api import tmdb
+from src.translator_app.providers import letterboxd
+from src.translator_app import translator
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
