@@ -142,8 +142,10 @@ async def enrich_streams_with_subtitles(
             langs.extend([str(lang).strip().lower() for lang in raw_langs if lang])
         return any(l.startswith("bg") or l.startswith("bul") for l in langs)
 
-    def _mark_bg_subs(stream: dict) -> None:
-        """Mark Bulgarian subtitles based ONLY on confirmed embedded metadata."""
+    def _mark_bg_content(stream: dict) -> None:
+        """Mark Bulgarian subtitles AND audio based on metadata and probe results."""
+        
+        # 1. Check for BG Subtitles (Embedded)
         tracks = stream.get("embeddedSubtitles") or []
         bg_in_embedded = False
         
@@ -154,46 +156,96 @@ async def enrich_streams_with_subtitles(
             if lang.startswith("bg") or lang.startswith("bul"):
                 bg_in_embedded = True
                 break
-            
-            # Extra safety check on title if lang didn't match (though probe handles this too)
             if "bulgarian" in title:
                 bg_in_embedded = True
                 break
         
-        # STRICT REQUIREMENT: Only flag if embedded BG is confirmed
-        if not bg_in_embedded:
-            # Clean up any existing flags if re-processing
+        # 2. Check for BG Audio (Filename & Probe)
+        bg_audio_found = False
+        
+        # Check filename regex
+        name = str(stream.get("name") or "")
+        title = str(stream.get("title") or "")
+        filename = str(stream.get("filename") or "")
+        combined_text = (name + " " + title + " " + filename).lower()
+        
+        # Normalize separators to spaces for better keyword matching
+        import re
+        combined_text = re.sub(r'[._\-]+', ' ', combined_text)
+        
+        audio_keywords = [
+            "bg audio", "bgaudio", "bg-audio",
+            "bg dub", "bgdub", "bg-dub",
+            "бг аудио", "бг дублаж",
+            "bulgarian audio", "bulgarian dub"
+        ]
+        
+        if any(kw in combined_text for kw in audio_keywords):
+            bg_audio_found = True
+            
+        # Check probe results (if available)
+        if stream.get("audio_langs"):
+            audio_langs = stream.get("audio_langs") or []
+            if any(l.startswith("bg") or l.startswith("bul") for l in audio_langs):
+                bg_audio_found = True
+
+        # Apply flags
+        tags = stream.get("visualTags") or []
+        
+        # Subtitles Flagging
+        if bg_in_embedded:
+            stream["subs_bg"] = True
+            if "bg-subs" not in tags:
+                tags.append("bg-subs")
+            if "bg-embedded" not in tags:
+                tags.append("bg-embedded")
+        
+        # Audio Flagging
+        if bg_audio_found:
+            stream["audio_bg"] = True
+            if "bg-audio" not in tags:
+                tags.append("bg-audio")
+                
+        stream["visualTags"] = tags
+
+        # Inject Visual Indicators
+        # 🇧🇬 = Subtitles
+        # 🔊 = Audio
+        # 🇧🇬🔊 = Both
+        
+        flags = []
+        if bg_in_embedded:
+            flags.append(BULGARIAN_FLAG)
+        if bg_audio_found:
+            flags.append("🔊")
+            
+        if not flags:
+            # Cleanup if re-processing
             try:
-                name = str(stream.get("name") or "")
-                if "🇧🇬" in name or "💿" in name:
-                    clean_name = name.replace("🇧🇬💿", "").replace("🇧🇬", "").replace("💿", "").strip()
-                    stream["name"] = clean_name
+                clean_name = name.replace(BULGARIAN_FLAG, "").replace("🔊", "").replace("💿", "").strip()
+                stream["name"] = clean_name
             except Exception:
                 pass
             return
 
-        # If we are here, embedded BG is confirmed.
-        stream["subs_bg"] = True
-        tags = stream.get("visualTags") or []
-        if "bg-subs" not in tags:
-            tags.append("bg-subs")
-        if "bg-embedded" not in tags:
-            tags.append("bg-embedded")
-        stream["visualTags"] = tags
-
-        # Inject visual indicator (🇧🇬)
-        flag = BULGARIAN_FLAG
+        flag_str = " ".join(flags)
+        
         try:
-            name = str(stream.get("name") or "")
             # Avoid duplication
-            if flag not in name:
-                stream["name"] = f"{flag} {name}".strip()
+            current_name = str(stream.get("name") or "")
+            
+            # Clean up existing flags first to ensure clean state
+            clean_name = current_name.replace(BULGARIAN_FLAG, "").replace("🔊", "").replace("💿", "").strip()
+            
+            # Re-inject flags at the start
+            stream["name"] = f"{flag_str} {clean_name}".strip()
         except Exception:
             pass
+            
         try:
             desc = str(stream.get("description") or "")
-            if flag not in desc:
-                stream["description"] = f"{desc} ⚑ {flag}".strip()
+            if flag_str not in desc:
+                stream["description"] = f"{desc} ⚑ {flag_str}".strip()
         except Exception:
             pass
 
@@ -232,7 +284,7 @@ async def enrich_streams_with_subtitles(
 
         # Honor any subtitle metadata already present (e.g., upstream provided subtitleLangs/embeddedSubtitles)
         for stream in streams:
-            _mark_bg_subs(stream)
+            _mark_bg_content(stream)
 
         # Smart stream selection: Prioritize high-quality streams for probing
         def _stream_quality_score(stream: dict) -> int:
@@ -279,49 +331,58 @@ async def enrich_streams_with_subtitles(
             for stream, meta in zip(targets, results):
                 if not meta:
                     continue
+                
+                # Process Subtitles
                 langs = [lang for lang in (meta.get("langs") or []) if lang]
-                has_bg_subs = any(l.startswith("bg") or l.startswith("bul") for l in langs)
                 if langs:
                     stream["subtitleLangs"] = ",".join(langs)
                     for lang in langs:
                         stream[f"subs_{lang}"] = True
-                    # Also push a visual tag for Bulgarian subs so formatters can detect it using built-in fields
-                    if has_bg_subs:
-                        tags = stream.get("visualTags") or []
-                        if "bg-subs" not in tags:
-                            tags.append("bg-subs")
-                        stream["visualTags"] = tags
+                
                 tracks = meta.get("tracks") or []
                 if tracks:
                     stream["embeddedSubtitles"] = tracks
+                    
+                # Process Audio
+                audio_langs = [lang for lang in (meta.get("audio_langs") or []) if lang]
+                if audio_langs:
+                    stream["audio_langs"] = audio_langs
+                    
                 # Re-apply marker after probe results
-                _mark_bg_subs(stream)
+                _mark_bg_content(stream)
     else:
         # Level 1: Only check upstream metadata, no probing
         logger.info(f"Stream enrichment level {ENRICH_LEVEL_SCRAPER_ONLY}: Scraper check only (no video probing)")
         for stream in streams:
-            _mark_bg_subs(stream)
+            _mark_bg_content(stream)
 
     # Scraper check removed to comply with strict "Embedded ONLY" flagging requirement.
     # External subtitles will not trigger any flags or indicators.
 
-    # Prioritize streams: 1) BG Embedded 2) BG Found 3) Everything else
+    # Prioritize streams: 
+    # 1) BG Audio (Rare & High Value)
+    # 2) BG Embedded Subs
+    # 3) BG Found (but not embedded)
+    # 4) Everything else
     def _priority(stream: dict) -> int:
         tags = stream.get("visualTags") or []
+        has_bg_audio = "bg-audio" in tags
         has_bg_embedded = "bg-embedded" in tags
         
         # Check for any indication of BG subs (scraped, metadata, or embedded list)
-        has_bg = bool(
+        has_bg_subs = bool(
             stream.get("subs_bg")
             or ("bg-subs" in tags)
             or _subtitle_langs_has_bg(stream.get("subtitleLangs"))
         )
 
+        if has_bg_audio:
+            return 0  # 1. BG Audio (Top Priority)
         if has_bg_embedded:
-            return 0  # 1. BG Embedded
-        if has_bg:
-            return 1  # 2. BG Found (but not embedded)
-        return 2      # 3. Everything else
+            return 1  # 2. BG Embedded Subs
+        if has_bg_subs:
+            return 2  # 3. BG Found (but not embedded)
+        return 3      # 4. Everything else
 
     indexed_sorted = sorted(enumerate(streams), key=lambda pair: (_priority(pair[1]), pair[0]))
     return [stream for _, stream in indexed_sorted]

@@ -50,7 +50,7 @@ def _build_cmd(url: str) -> List[str]:
         "-print_format",
         "json",
         "-select_streams",
-        "s",
+        "a,s",
         "-show_entries",
         "stream=index,codec_type,codec_name,disposition:stream_tags=language,title",
         "-analyzeduration",
@@ -64,9 +64,13 @@ def _build_cmd(url: str) -> List[str]:
 def _parse_tracks(raw: Dict) -> Optional[Dict]:
     streams = raw.get("streams") or []
     tracks: List[Dict] = []
+    audio_tracks: List[Dict] = []
+    
     for entry in streams:
-        if entry.get("codec_type") != "subtitle":
+        codec_type = entry.get("codec_type")
+        if codec_type not in ("subtitle", "audio"):
             continue
+            
         tags = entry.get("tags") or {}
         lang = (
             tags.get("language")
@@ -84,18 +88,31 @@ def _parse_tracks(raw: Dict) -> Optional[Dict]:
                 lang = "bul"
                 
         disposition = entry.get("disposition") or {}
-        tracks.append(
-            {
-                "lang": lang,
-                "title": title,
-                "default": bool(disposition.get("default")),
-                "forced": bool(disposition.get("forced")),
-            }
-        )
-    if not tracks:
+        track_info = {
+            "lang": lang,
+            "title": title,
+            "default": bool(disposition.get("default")),
+            "forced": bool(disposition.get("forced")),
+            "codec": entry.get("codec_name")
+        }
+        
+        if codec_type == "subtitle":
+            tracks.append(track_info)
+        elif codec_type == "audio":
+            audio_tracks.append(track_info)
+            
+    if not tracks and not audio_tracks:
         return None
+        
     langs = [t["lang"] for t in tracks if t.get("lang")]
-    return {"tracks": tracks, "langs": langs}
+    audio_langs = [t["lang"] for t in audio_tracks if t.get("lang")]
+    
+    return {
+        "tracks": tracks, 
+        "langs": langs,
+        "audio_tracks": audio_tracks,
+        "audio_langs": audio_langs
+    }
 
 
 async def probe(url: str) -> Optional[Dict]:
