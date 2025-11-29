@@ -6,8 +6,6 @@ A Stremio addon for translating media catalogs into any language, with a special
 - **Public URL:** `https://toast-translator.your-domain.com/` (Replace with your deployment)
 - The Link Generator and installer are available directly from the root page.
 
----
-
 ## 📚 Features
 
 - **Catalog Translation:** Translates popular catalogs like Cinemeta, IMDB, Trakt, and more.
@@ -20,8 +18,6 @@ A Stremio addon for translating media catalogs into any language, with a special
 - **Secure & Private:** No personal data is stored. Login is optional and only used to manage your Stremio addons.
 - **Modern Architecture:** A completely refactored and modular FastAPI backend.
 
----
-
 ## 🔧 How to Use
 1. 📥 Install the original catalog you wish to translate (e.g., Cinemeta).
 2. 🔑 Go to the Toast Translator configuration page and log in with your Stremio account (optional).
@@ -30,7 +26,7 @@ A Stremio addon for translating media catalogs into any language, with a special
 
 Alternatively, use the **Link Generator** on the main page to create installation links without logging in.
 
----
+## How to Install
 
 ## 🛠️ For Developers
 
@@ -61,9 +57,7 @@ This project has been significantly refactored for better code quality, maintain
     ```bash
     python main.py
     ```
-The server will be available at `http://127.0.0.1:8000`.
-
----
+4.  The server will be available at `http://127.0.0.1:8000`.
 
 ## 🙏 Credits
 - Original addon created by [@diogomiguel93](https://github.com/diogomiguel93).
