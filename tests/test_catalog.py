@@ -42,7 +42,8 @@ async def test_get_catalog_success(client):
             }
 
             # Call the endpoint
-            response = client.get("/some-addon/language=en,letterboxd_user=test/catalog/movie/popular.json")
+            # 'aHR0cHM6Ly9jaW5lbWV0YS5zdHJlbS5pbw==' is base64 for 'https://cinemeta.strem.io'
+            response = client.get("/aHR0cHM6Ly9jaW5lbWV0YS5zdHJlbS5pbw==/language=en,letterboxd_user=test/catalog/movie/popular.json")
 
             # Assertions
             assert response.status_code == 200
@@ -64,7 +65,7 @@ async def test_get_catalog_upstream_error(client):
         )
 
         # Call the endpoint
-        response = client.get("/some-addon/language=en/catalog/movie/popular.json")
+        response = client.get("/aHR0cHM6Ly9jaW5lbWV0YS5zdHJlbS5pbw==/language=en/catalog/movie/popular.json")
 
         # Assertions
         assert response.status_code == 500
