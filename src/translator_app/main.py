@@ -8,8 +8,6 @@ import json
 import logging
 
 # Ensure bundled bg_subtitles is importable
-# We assume we are running from toast-translator root
-# sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "bg_subtitles_app", "src"))
 
 from src.translator_app.settings import settings
 from src.translator_app.logger import setup_logging
@@ -46,7 +44,6 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Mount local BG subtitles under /bg
 try:
-    # bg_subtitles_app is already in sys.path from line 12
     from src.bg_subtitles_app.app import app as bg_app
     app.mount("/bg", bg_app)
     logger.info("Successfully mounted BG subtitles app at /bg")
