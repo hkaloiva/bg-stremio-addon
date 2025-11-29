@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         1 = Scraper only (fast, 1-2s, checks BG subtitle availability)
         2 = Full enrichment (10-15s, probes top streams + RealDebrid resolution)
     """
-    translator_version: str = "v1.1.0-golden"
+    translator_version: str = "v1.1.2"
     default_language: str = "bg-BG"
     force_prefix: bool = False
     force_meta: bool = False

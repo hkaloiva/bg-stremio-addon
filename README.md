@@ -1,4 +1,4 @@
-# Toast Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.1.1-blue)
+# Toast Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.1.2-blue)
 
 A Stremio addon for translating media catalogs into any language, with a special focus on providing Bulgarian subtitles.
 
