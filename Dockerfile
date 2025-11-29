@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 # Ensure nested bg subtitles requirements are available before install
-COPY bg_subtitles_app/requirements.txt bg_subtitles_app/requirements.txt
+COPY src/bg_subtitles_app/requirements.txt src/bg_subtitles_app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Bundle stremio-community-subtitles (vendored locally) inside this image (sqlite mode)

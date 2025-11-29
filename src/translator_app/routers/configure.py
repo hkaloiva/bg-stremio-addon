@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from app.templates import templates
-from app.constants import cloudflare_cache_headers
-from app.utils import normalize_addon_url, decode_base64_url
+from src.translator_app.templates import templates
+from src.translator_app.constants import cloudflare_cache_headers
+from src.translator_app.utils import normalize_addon_url, decode_base64_url
 
 router = APIRouter()
 

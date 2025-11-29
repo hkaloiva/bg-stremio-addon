@@ -1,6 +1,6 @@
 import pytest
 
-from bg_subtitles.metadata import parse_stremio_id, normalize_year
+from src.bg_subtitles_app.bg_subtitles.metadata import parse_stremio_id, normalize_year
 
 
 def test_parse_stremio_id_plain():

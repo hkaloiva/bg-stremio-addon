@@ -1,61 +1,70 @@
-# A Stremio Catalog Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.0.9--performance-brightgreen)
+# Toast Translator ✨ (with bundled Bulgarian Subtitles) ![Version](https://img.shields.io/badge/version-v1.1.1-blue)
+
+A Stremio addon for translating media catalogs into any language, with a special focus on providing Bulgarian subtitles.
 
 ## Live Instance
-- Public URL: `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/`
-- Wake endpoint (kept warm via GitHub Action): `https://toast-translator-kaloyan8907-8d1fe372.koyeb.app/wake`
-- Navigate via any browser; the Link Generator and installer are available directly from the root page.
-- Release: `v1.0.9-performance` 
-  - ⚡ **50% faster stream loading** (10-15s vs 25-30s)
-  - ✅ OpenSubtitles flag detection (scraper fallback for unindexed titles)
-  - ✅ Optimized Level 2 enrichment (smart stream selection, parallel processing)
-  - ✅ Flags: 🇧🇬📀 for embedded subtitles, 🇧🇬 for scraped/OpenSubtitles availability
-  - ✅ Multi-arch Docker image (amd64/arm64)
+- **Public URL:** `https://toast-translator.your-domain.com/` (Replace with your deployment)
+- The Link Generator and installer are available directly from the root page.
 
 ---
 
-## 📚 Compatible catalogs
-- 🎬 [Cinemeta](https://v3-cinemeta.strem.io/manifest.json)
-- 🏛️ [Public Domains](https://caching.stremio.net/manifest.json)
-- 📺 [Streaming Catalogs](https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/configure)
-- 🎥 [IMDB Catalogs](https://1fe84bc728af-imdb-catalogs.baby-beamup.club/manifest.json)
-- 🍅 [Rotten Tomatoes Catalogs](https://7a82163c306e-rottentomatoes.baby-beamup.club/manifest.json)
-- 🎭 [Trakt](https://trakt.dexter21767.com/configure/)
-- 🍣 [Anime Kitsu](https://anime-kitsu.strem.fun/manifest.json)
-- 🍜 [Anime Catalogs](https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/configure)
-- 🦸‍♂️ [Marvel Catalogs](https://addon-marvel.onrender.com/manifest.json)
-- 🎞️ [Letterboxd](https://letterboxd.almosteffective.com/configure)
-- 📦 [Stremthru lists bundle](https://stremthru.elfhosted.com/)
+## 📚 Features
+
+- **Catalog Translation:** Translates popular catalogs like Cinemeta, IMDB, Trakt, and more.
+- **Bulgarian Subtitles:** Integrates multiple Bulgarian subtitle providers.
+- **Stream Enrichment:**
+    - ⚡ **Fast Stream Loading:** Optimized stream processing.
+    - ✅ **Subtitle Flagging:** Automatically flags streams with Bulgarian subtitles (🇧🇬).
+    - 📀 **Embedded Subtitle Detection:** Identifies streams with embedded subtitles.
+- **Customizable Posters:** Supports custom posters from providers like RPDB and Top Posters.
+- **Secure & Private:** No personal data is stored. Login is optional and only used to manage your Stremio addons.
+- **Modern Architecture:** A completely refactored and modular FastAPI backend.
 
 ---
 
-## 🔧 How to translate
-1. 📥 Install the original catalog (e.g., Cinemeta)
-2. 🔑 Log in on the configuration page
-3. ✅ Select the catalogs you want to translate
-4. 🎉 Click Apply and you're done!
+## 🔧 How to Use
+1. 📥 Install the original catalog you wish to translate (e.g., Cinemeta).
+2. 🔑 Go to the Toast Translator configuration page and log in with your Stremio account (optional).
+3. ✅ Select the catalogs you want to translate from the list of your installed addons.
+4. 🎉 Click **Apply**. The translated catalogs will be added to your Stremio.
+
+Alternatively, use the **Link Generator** on the main page to create installation links without logging in.
 
 ---
 
-## ❓ Configuration Notes
-- 🖼️ **RPDB** → RPDB posters in English with free key, in selected language if tier is greater than 0
-- ⭐ **Toast Ratings** → free posters with ratings in selected language
+## 🛠️ For Developers
+
+This project has been significantly refactored for better code quality, maintainability, and developer experience.
+
+### Key Architectural Improvements
+- **Modular FastAPI Structure:** The monolithic `main.py` has been broken down into a clean, modular architecture using FastAPI routers for separation of concerns.
+- **Centralized Configuration:** All settings are managed via `pydantic-settings` in `app/settings.py` for type-safe configuration.
+- **Structured Logging:** Centralized logging is configured in `app/logger.py`.
+- **Improved Error Handling:** More specific exceptions are caught and logged, preventing silent failures.
+- **API Documentation:** FastAPI provides automatic, interactive API documentation (at `/docs` and `/redoc`).
+- **Dependency Management:** Python dependencies are managed with `pip` and `requirements.txt`.
+- **Code Quality:** All Python code is formatted and linted with [Ruff](https://github.com/astral-sh/ruff).
+- **Testing:** The test suite uses `pytest` and is located in the `tests/` directory.
+
+### Getting Started with Development
+1.  **Clone the repository.**
+2.  **Set up the environment:**
+    ```bash
+    # Create and activate a virtual environment
+    python3 -m venv .venv
+    source .venv/bin/activate
+    
+    # Install dependencies
+    pip install -r requirements.txt
+    ```
+3.  **Run the development server:**
+    ```bash
+    python main.py
+    ```
+The server will be available at `http://127.0.0.1:8000`.
 
 ---
 
-## 🔐 Why log in?
-- You can log in to load and install addons installed on your account.
-- No personal data is stored outside of Stremio
-- If you don't want to log in, you can use the Link Generator 🧩
-
----
-
-## 🧩 Link Generator
-If you don't want to log in, you can use the [Link Generator](https://0f693ad7dcba-toast-translator.baby-beamup.club/link_generator) to generate addon installation URLs.
-
----
-
-## 🙏 Credits / Thanks
-Special thanks to the following repositories which were used to map anime IDs:  
-- [Fribb / anime-lists](https://github.com/Fribb/anime-lists)  
-- [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs)
-- Original addon created by [@diogomiguel93](https://github.com/diogomiguel93)
+## 🙏 Credits
+- Original addon created by [@diogomiguel93](https://github.com/diogomiguel93).
+- Anime ID mapping lists from [Fribb / anime-lists](https://github.com/Fribb/anime-lists) and [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs).

@@ -2,9 +2,9 @@ import httpx
 import asyncio
 import time
 from typing import List, Optional, Dict
-from app.settings import settings
-from app.logger import logger
-from app.constants import (
+from src.translator_app.settings import settings
+from src.translator_app.logger import logger
+from src.translator_app.constants import (
     BULGARIAN_FLAG,
     ENRICH_LEVEL_DISABLED,
     ENRICH_LEVEL_SCRAPER_ONLY,

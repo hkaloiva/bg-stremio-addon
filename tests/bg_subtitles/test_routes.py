@@ -4,13 +4,8 @@ from pathlib import Path
 
 import pytest
 
-# Ensure we import the FastAPI app from src/app.py, not the root app.py
-SRC_DIR = str((Path(__file__).resolve().parents[1] / "src").resolve())
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
-
 from fastapi.testclient import TestClient  # noqa: E402
-import app as app_module  # noqa: E402
+from src.bg_subtitles_app import app as app_module  # noqa: E402
 
 
 def _fake_results(n=2):

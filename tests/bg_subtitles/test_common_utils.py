@@ -1,4 +1,4 @@
-from bg_subtitles.sources.common import get_search_string
+from src.bg_subtitles_app.bg_subtitles.sources.common import get_search_string
 
 
 def _make_item(title: str) -> dict:

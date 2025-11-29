@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
 import httpx
-from app.settings import settings
-from app.utils import normalize_addon_url, decode_base64_url
+from src.translator_app.settings import settings
+from src.translator_app.utils import normalize_addon_url, decode_base64_url
 
 router = APIRouter()
 

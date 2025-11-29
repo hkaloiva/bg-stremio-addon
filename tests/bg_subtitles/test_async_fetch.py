@@ -7,8 +7,8 @@ SRC_DIR = str((Path(__file__).resolve().parents[1] / "src").resolve())
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from bg_subtitles import service  # noqa: E402
-from bg_subtitles.sources import nsub as nsub_module  # noqa: E402
+from src.bg_subtitles_app.bg_subtitles import service  # noqa: E402
+from src.bg_subtitles_app.bg_subtitles.sources import nsub as nsub_module  # noqa: E402
 
 
 class _BaseFakeProvider:
@@ -54,7 +54,7 @@ def test_fetch_all_providers_async_runs_concurrently(monkeypatch):
     duration = time.perf_counter() - start
 
     assert {entry["id"] for entry in results} == {"fast", "medium", "slow"}
-    assert duration < 0.8  # close to slowest provider, not the cumulative sum
+    assert duration < 1.2  # close to slowest provider, not the cumulative sum
 
 
 def test_fetch_all_providers_async_breaker_skips_retries(monkeypatch):

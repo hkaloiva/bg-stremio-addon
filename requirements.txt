@@ -9,7 +9,7 @@ chardet==5.2.0
 
 # bg subtitles (includes: fastapi, uvicorn, httpx, requests, beautifulsoup4, 
 # rarfile, py7zr, charset-normalizer, prometheus-client, guessit, aiohttp, psutil)
--r ./bg_subtitles_app/requirements.txt
+-r ./src/bg_subtitles_app/requirements.txt
 
 # Pydantic (ensure compatibility)
 pydantic==2.10.5

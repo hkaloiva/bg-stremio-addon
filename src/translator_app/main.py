@@ -9,15 +9,15 @@ import logging
 
 # Ensure bundled bg_subtitles is importable
 # We assume we are running from toast-translator root
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "bg_subtitles_app", "src"))
+# sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "bg_subtitles_app", "src"))
 
-from app.settings import settings
-from app.logger import setup_logging
-from app.constants import cloudflare_cache_headers
-from app.cache_manager import open_all_cache, close_all_cache
+from src.translator_app.settings import settings
+from src.translator_app.logger import setup_logging
+from src.translator_app.constants import cloudflare_cache_headers
+from src.translator_app.cache_manager import open_all_cache, close_all_cache
 from anime import kitsu, mal, anime_mapping
 
-from app.routers import manifest, catalog, meta, configure, subtitles, streams, dashboard
+from src.translator_app.routers import manifest, catalog, meta, configure, subtitles, streams, dashboard
 
 setup_logging()
 logger = logging.getLogger("toast-translator")
@@ -44,7 +44,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Mount local BG subtitles under /bg
 try:
     # bg_subtitles_app is already in sys.path from line 12
-    from bg_subtitles_app.src.app import app as bg_app
+    from src.bg_subtitles_app.app import app as bg_app
     app.mount("/bg", bg_app)
     logger.info("Successfully mounted BG subtitles app at /bg")
 except ImportError as exc:

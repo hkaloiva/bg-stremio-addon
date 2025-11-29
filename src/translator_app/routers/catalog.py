@@ -1,18 +1,30 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Response, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
 import asyncio
-from app.settings import settings
-from app.constants import cloudflare_cache_headers
-from app.utils import normalize_addon_url, decode_base64_url, parse_user_settings
-from app.services.anime_utils import remove_duplicates
+import logging
+import json
+from src.translator_app.settings import settings
+from src.translator_app.constants import cloudflare_cache_headers
+from src.translator_app.utils import normalize_addon_url, decode_base64_url, parse_user_settings
+from src.translator_app.services.anime_utils import remove_duplicates
 from api import tmdb
 from providers import letterboxd
 import translator
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-@router.get("/{addon_url}/{user_settings}/catalog/{type}/{path:path}")
+@router.get(
+    "/{addon_url}/{user_settings}/catalog/{type}/{path:path}",
+    summary="Get Translated Addon Catalog",
+    description="Fetches a catalog from a source addon, translates its metadata, and enriches it with additional details.",
+    response_description="Translated and enriched catalog metadata.",
+    responses={
+        200: {"description": "Successfully translated and enriched catalog."},
+        502: {"description": "Failed to fetch or process data from an upstream source."},
+    },
+)
 async def get_catalog(response: Response, addon_url: str, type: str, user_settings: str, path: str):
     # User settings
     settings_dict = parse_user_settings(user_settings)
@@ -30,7 +42,8 @@ async def get_catalog(response: Response, addon_url: str, type: str, user_settin
     # Convert addon base64 url (fallback to raw if already plain)
     try:
         addon_url = normalize_addon_url(decode_base64_url(addon_url))
-    except Exception:
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to decode addon_url '{addon_url}', treating as plain URL. Error: {e}")
         addon_url = normalize_addon_url(addon_url)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=settings.request_timeout) as client:
@@ -43,10 +56,18 @@ async def get_catalog(response: Response, addon_url: str, type: str, user_settin
                     continue
                 inputs.append(token)
 
-            print(f"[lb_multi] raw='{lb_multi}' parsed={inputs}")
+            logger.info(f"[lb_multi] raw='{lb_multi}' parsed={inputs}")
             catalog = await letterboxd.fetch_multi_list_catalog(client, inputs)
         else:
-            response = await client.get(f"{addon_url}/catalog/{type}/{path}")
+            try:
+                response = await client.get(f"{addon_url}/catalog/{type}/{path}")
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Upstream addon error for {addon_url}: {e}")
+                raise HTTPException(status_code=e.response.status_code, detail=f"Upstream addon error: {e.response.text}")
+            except httpx.RequestError as e:
+                logger.error(f"Upstream addon request failed for {addon_url}: {e}")
+                raise HTTPException(status_code=502, detail=f"Failed to request upstream addon: {e}")
 
             # Cinemeta last-videos and calendar
             if 'last-videos' in path or 'calendar-videos' in path:
@@ -54,8 +75,8 @@ async def get_catalog(response: Response, addon_url: str, type: str, user_settin
             
             try:
                 catalog = response.json()
-            except:
-                print(f"Error on load catalog: {response.status_code}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Error decoding JSON from catalog: {response.status_code} - {e.doc}")
                 return JSONResponse(content={}, headers=cloudflare_cache_headers)
             
             if type == 'anime':
@@ -67,7 +88,7 @@ async def get_catalog(response: Response, addon_url: str, type: str, user_settin
             original_count = len(metas)
             catalog['metas'] = [m for m in metas if isinstance(m, dict)]
             if original_count != len(catalog['metas']):
-                print(f"Filtered {original_count - len(catalog['metas'])} invalid metas from catalog")
+                logger.warning(f"Filtered {original_count - len(catalog['metas'])} invalid metas from catalog")
 
             has_letterboxd = any(
                 (meta.get('id') or '').startswith('letterboxd:') or (meta.get('imdb_id') or '').startswith('letterboxd:')
@@ -104,7 +125,16 @@ async def get_catalog(response: Response, addon_url: str, type: str, user_settin
     new_catalog = translator.translate_catalog(catalog, tmdb_details, top_stream_poster, toast_ratings, rpdb, rpdb_key, top_stream_key, language)
     return JSONResponse(content=new_catalog, headers=cloudflare_cache_headers)
 
-@router.get("/letterboxd-multi/catalog/{type}/{path:path}")
+@router.get(
+    "/letterboxd-multi/catalog/{type}/{path:path}",
+    summary="Get Aggregated Letterboxd Catalog",
+    description="Creates a catalog by aggregating multiple Letterboxd lists or URLs. This is a special endpoint that internally calls the main catalog getter.",
+    response_description="Translated and enriched catalog metadata from Letterboxd sources.",
+    responses={
+        200: {"description": "Successfully aggregated, translated, and enriched catalog."},
+        502: {"description": "Failed to fetch or process data from an upstream source."},
+    },
+)
 async def letterboxd_multi_catalog(type: str, path: str, tmdb_key: str, language: str = "bg-BG", lb_multi: str = "", rpdb: str = 'true', rpdb_key: str = 't0-free-rpdb', tr: str = '0', tsp: str = '0', topkey: str = ''):
     user_settings = {
         'language': language,
@@ -120,9 +150,29 @@ async def letterboxd_multi_catalog(type: str, path: str, tmdb_key: str, language
     settings_str = ','.join([f"{k}={v}" for k, v in user_settings.items()])
     return await get_catalog(Response(), 'letterboxd-multi', type, settings_str, path)
 
-@router.get('/{addon_url}/{user_settings}/addon_catalog/{path:path}')
+@router.get(
+    '/{addon_url}/{user_settings}/addon_catalog/{path:path}',
+    summary="Proxy an Addon's Catalog",
+    description="Acts as a simple proxy for an addon's own catalog, without translation or enrichment. Used for 'Live TV' or other sections that do not need modification.",
+    response_description="The raw, unmodified catalog from the source addon.",
+    responses={
+        200: {"description": "Successfully retrieved the upstream catalog."},
+        502: {"description": "Failed to fetch data from the upstream addon."},
+    },
+)
 async def get_addon_catalog(addon_url: str, path: str):
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     async with httpx.AsyncClient(follow_redirects=True, timeout=settings.request_timeout) as client:
-        response = await client.get(f"{addon_url}/addon_catalog/{path}")
-        return JSONResponse(content=response.json(), headers=cloudflare_cache_headers)
+        try:
+            response = await client.get(f"{addon_url}/addon_catalog/{path}")
+            response.raise_for_status()
+            return JSONResponse(content=response.json(), headers=cloudflare_cache_headers)
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Upstream addon error for {addon_url}: {e}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"Upstream addon error: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Upstream addon request failed for {addon_url}: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to request upstream addon: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON from addon_catalog: {e.doc}")
+            raise HTTPException(status_code=500, detail="Failed to decode JSON from upstream addon.")

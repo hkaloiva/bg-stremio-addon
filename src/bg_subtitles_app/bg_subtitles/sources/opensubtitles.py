@@ -15,15 +15,14 @@ log = logging.getLogger("bg_subtitles.sources.opensubtitles")
 API_BASE = "https://api.opensubtitles.com/api/v1"
 DEFAULT_USER_AGENT = "bg-stremio-addon 0.1"
 DEFAULT_LANGUAGE = "bg"
-DEFAULT_API_KEY = "cLMZpEBLxo2L58VhkMg8UaXOEhH8JPLR"
 SCRAPE_BASE_URL = "https://www.opensubtitles.org"
 
 
-def _get_api_key() -> str:
+def _get_api_key() -> Optional[str]:
     value = os.getenv("OPENSUBTITLES_API_KEY")
-    if value is not None:
+    if value and value.strip():
         return value.strip()
-    return DEFAULT_API_KEY
+    return None
 
 
 def _get_user_agent() -> str:
@@ -31,12 +30,15 @@ def _get_user_agent() -> str:
 
 
 def is_configured() -> bool:
-    return bool(_get_api_key())
+    return _get_api_key() is not None
 
 
 def _headers() -> Dict[str, str]:
+    api_key = _get_api_key()
+    if not api_key:
+        raise ValueError("OpenSubtitles API key is not configured.")
     return {
-        "Api-Key": _get_api_key(),
+        "Api-Key": api_key,
         "User-Agent": _get_user_agent(),
         "Accept": "application/json",
     }

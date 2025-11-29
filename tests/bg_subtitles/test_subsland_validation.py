@@ -1,4 +1,4 @@
-from bg_subtitles.sources import subsland
+from src.bg_subtitles_app.bg_subtitles.sources import subsland
 
 
 def test_subsland_filters_mismatched_titles():

@@ -1,7 +1,7 @@
 import io
 import zipfile
 
-from bg_subtitles.extract import extract_subtitle, SubtitleExtractionError
+from src.bg_subtitles_app.bg_subtitles.extract import extract_subtitle, SubtitleExtractionError
 
 
 def make_zip(files):

@@ -4,7 +4,7 @@ This module tests the core functionality of detecting embedded Bulgarian
 subtitles in video streams and applying the appropriate visual indicators.
 """
 import pytest
-from app.services.stream_enricher import enrich_streams_with_subtitles
+from src.translator_app.services.stream_enricher import enrich_streams_with_subtitles
 
 
 @pytest.mark.asyncio

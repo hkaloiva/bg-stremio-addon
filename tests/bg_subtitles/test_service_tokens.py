@@ -1,4 +1,4 @@
-from bg_subtitles.service import _encode_payload, _decode_payload
+from src.bg_subtitles_app.bg_subtitles.service import _encode_payload, _decode_payload
 
 
 def test_token_roundtrip_simple():

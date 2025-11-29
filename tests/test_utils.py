@@ -2,7 +2,7 @@ import pytest
 
 def test_utils_decode_base64():
     """Test base64 URL decoding"""
-    from app.utils import decode_base64_url
+    from src.translator_app.utils import decode_base64_url
     
     # Plain URL should return as-is
     plain = "https://example.com"
@@ -15,7 +15,7 @@ def test_utils_decode_base64():
 
 def test_utils_sanitize_alias():
     """Test alias sanitization"""
-    from app.utils import sanitize_alias
+    from src.translator_app.utils import sanitize_alias
     
     assert sanitize_alias("My Addon") == "myaddon"
     assert sanitize_alias("test-addon_123") == "test-addon_123"
@@ -24,7 +24,7 @@ def test_utils_sanitize_alias():
 
 def test_utils_parse_user_settings():
     """Test user settings parsing"""
-    from app.utils import parse_user_settings
+    from src.translator_app.utils import parse_user_settings
     
     settings = parse_user_settings("language=bg-BG,rpdb=1,alias=test")
     assert settings["language"] == "bg-BG"

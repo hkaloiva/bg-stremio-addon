@@ -4,10 +4,10 @@ import os
 import zipfile
 import shutil
 import httpx
-from app.settings import settings
-from app.constants import cloudflare_cache_headers
-from app.templates import templates
-from app.cache_manager import (
+from src.translator_app.settings import settings
+from src.translator_app.constants import cloudflare_cache_headers
+from src.translator_app.templates import templates
+from src.translator_app.cache_manager import (
     open_all_cache, close_all_cache, get_cache_length as get_meta_cache_length
 )
 import api.tmdb as tmdb
@@ -80,7 +80,7 @@ async def clean_cache(password: str = Query(...)):
             cache.expire()
         # Meta - handled via cache manager if we exposed it, but we only exposed get_meta_cache.
         # We need to access meta_cache dict from manager.
-        from app.cache_manager import meta_cache
+        from src.translator_app.cache_manager import meta_cache
         for cache in meta_cache.values():
             cache.expire()
 

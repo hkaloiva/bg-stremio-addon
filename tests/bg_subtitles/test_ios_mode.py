@@ -2,12 +2,8 @@ import os
 import sys
 from pathlib import Path
 
-SRC_DIR = str((Path(__file__).resolve().parents[1] / "src").resolve())
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
-
 from fastapi.testclient import TestClient
-import app as app_module
+from src.bg_subtitles_app import app as app_module
 
 
 def test_ios_plain_route_wrapper(monkeypatch):

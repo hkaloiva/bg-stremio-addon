@@ -4,9 +4,9 @@ import httpx
 import json
 import asyncio
 import translator
-from app.settings import settings
-from app.constants import cloudflare_cache_headers
-from app.utils import normalize_addon_url, decode_base64_url, parse_user_settings, sanitize_alias
+from src.translator_app.settings import settings
+from src.translator_app.constants import cloudflare_cache_headers
+from src.translator_app.utils import normalize_addon_url, decode_base64_url, parse_user_settings, sanitize_alias
 
 router = APIRouter()
 

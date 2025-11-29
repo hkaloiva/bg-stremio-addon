@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 import httpx
-from app.settings import settings
-from app.constants import cloudflare_cache_headers
-from app.utils import normalize_addon_url, decode_base64_url
-from app.services.stream_enricher import enrich_streams_with_subtitles
+from src.translator_app.settings import settings
+from src.translator_app.constants import cloudflare_cache_headers
+from src.translator_app.utils import normalize_addon_url, decode_base64_url
+from src.translator_app.services.stream_enricher import enrich_streams_with_subtitles
 
 router = APIRouter()
 
@@ -26,8 +26,8 @@ async def get_stream(
     Returns:
         JSONResponse with enriched stream data or error Response
     """
-    from app.utils import parse_user_settings
-    from app.logger import logger
+    from src.translator_app.utils import parse_user_settings
+    from src.translator_app.logger import logger
     
     addon_url = normalize_addon_url(decode_base64_url(addon_url))
     query = dict(request.query_params)

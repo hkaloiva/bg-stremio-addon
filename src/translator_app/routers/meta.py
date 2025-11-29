@@ -2,9 +2,9 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 import httpx
 import asyncio
-from app.settings import settings
-from app.constants import cloudflare_cache_headers, tmdb_addons_pool, cinemeta_url
-from app.utils import normalize_addon_url, decode_base64_url, parse_user_settings
+from src.translator_app.settings import settings
+from src.translator_app.constants import cloudflare_cache_headers, tmdb_addons_pool, cinemeta_url
+from src.translator_app.utils import normalize_addon_url, decode_base64_url, parse_user_settings
 from api import tmdb
 from anime import kitsu, mal
 from providers import letterboxd
@@ -22,7 +22,7 @@ tmdb_addon_meta_url = tmdb_addons_pool[0]
 # The original code had `_get_meta_cache` in main.py.
 # I should move the cache logic to `app/cache_manager.py`.
 
-from app.cache_manager import get_meta_cache
+from src.translator_app.cache_manager import get_meta_cache
 
 @router.get('/{addon_url}/{user_settings}/meta/{type}/{id}.json')
 async def get_meta(request: Request, response: Response, addon_url: str, user_settings: str, type: str, id: str):
