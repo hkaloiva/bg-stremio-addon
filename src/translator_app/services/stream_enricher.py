@@ -177,7 +177,10 @@ async def enrich_streams_with_subtitles(
             "bg audio", "bgaudio", "bg-audio",
             "bg dub", "bgdub", "bg-dub",
             "бг аудио", "бг дублаж",
-            "bulgarian audio", "bulgarian dub"
+            "bulgarian audio", "bulgarian dub",
+            # Audio codec patterns (common in BG releases)
+            "bg aac", "bg ac3", "bg dd", "bg dts",
+            "bg 5 1", "bg 2 0",  # Channel configs
         ]
         
         if any(kw in combined_text for kw in audio_keywords):
