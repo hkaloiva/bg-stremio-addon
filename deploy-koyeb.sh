@@ -55,7 +55,6 @@ ARCHIVE_JSON=$(koyeb archives create . \
   --ignore-dir __pycache__ \
   --ignore-dir cache \
   --ignore-dir tests \
-
   -o json)
 
 
