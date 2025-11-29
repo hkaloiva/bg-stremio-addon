@@ -1,32 +1,32 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# System deps needed for RAR/ZIP extraction used by bg-subtitles and git for bundled community subs
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libarchive-tools \
+    unrar-free \
+    unzip \
+    ca-certificates \
+    git \
+    libfreetype6 \
+    libfontconfig1 \
     curl \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt ./
-COPY bg_subtitles_app/requirements.txt ./bg_subtitles_app/
-
-# Install Python dependencies
+COPY requirements.txt .
+# Ensure nested bg subtitles requirements are available before install
+COPY src/bg_subtitles_app/requirements.txt src/bg_subtitles_app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Bundle stremio-community-subtitles (vendored locally) inside this image (sqlite mode)
+COPY community_vendor /app/community_vendor
+RUN pip install --no-cache-dir -r /app/community_vendor/requirements.txt \
+    && pip install --no-cache-dir "typing_extensions>=4.14.1"
+
 COPY . .
 
-# Create cache directory
-RUN mkdir -p cache
-
-# Expose port
-EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8080/healthz || exit 1
-
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+ENV PORT=8080
+RUN chmod +x /app/entrypoint.sh
+CMD ["/app/entrypoint.sh"]

@@ -10,3 +10,10 @@ bg_subs_*.log
 *.DS_Store
 node_modules/
 Translator/
+balkan-vault/venv/
+build_log.txt
+smoke_test_output.json
+test_output.json
+verify_koyeb.py
+measure_performance.py
+measure_multi_performance.py

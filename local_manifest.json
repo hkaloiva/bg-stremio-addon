@@ -1,1 +1,30 @@
-{"id":"bg.subtitles.stremio","version":"1.0.0","name":"Bulgarian Subtitles","description":"Aggregates Bulgarian subtitles from popular sources","catalogs":[],"resources":[{"name":"subtitles","types":["movie","series"],"idPrefixes":["tt"]}],"types":["movie","series"],"idPrefixes":["tt"],"behaviorHints":{"configurable":false,"configurationRequired":false}}
+{
+    "id": "bg.subtitles.stremio",
+    "version": "1.1.0",
+    "name": "Bulgarian Subtitles",
+    "description": "Aggregates Bulgarian subtitles from popular sources",
+    "catalogs": [],
+    "resources": [
+        {
+            "name": "subtitles",
+            "types": [
+                "movie",
+                "series"
+            ],
+            "idPrefixes": [
+                "tt"
+            ]
+        }
+    ],
+    "types": [
+        "movie",
+        "series"
+    ],
+    "idPrefixes": [
+        "tt"
+    ],
+    "behaviorHints": {
+        "configurable": false,
+        "configurationRequired": false
+    }
+}
