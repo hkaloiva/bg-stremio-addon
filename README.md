@@ -61,4 +61,4 @@ This project has been significantly refactored for better code quality, maintain
 
 ## 🙏 Credits
 - Original addon created by [@diogomiguel93](https://github.com/diogomiguel93).
-- Anime ID mapping lists from [Fribb / anime-lists](https://github.com/Fribb/anime-lists) and [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs).
+- Anime ID mapping lists from [Fribb / anime-lists](https://github.com/Fribb/anime-lists) and [Kometa-Team / Anime-IDs](https://github.com/Kometa-Team/Anime-IDs)..
